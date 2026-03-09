@@ -1,0 +1,174 @@
+@page "/"
+@page "/review"
+
+@using AIReviewerAPI.DTOs
+@using System.Net.Http.Json
+
+@inject HttpClient Http
+
+<div class="container py-5">
+
+    <div class="card shadow">
+
+        <div class="card-header bg-dark text-white">
+            <h4>🔍 AI Code Reviewer</h4>
+        </div>
+
+        <div class="card-body">
+
+            <div class="row">
+
+                <!-- CODE INPUT -->
+                <div class="col-lg-7">
+
+                    <label class="fw-bold mb-2">Code</label>
+
+                    <textarea class="form-control code-editor"
+                              @bind="codeContent"
+                              placeholder="// Paste code here"></textarea>
+
+                    <button class="btn btn-success mt-3 w-100"
+                            @onclick="SendToReview">
+
+                        @if (isLoading)
+                        {
+                            <span class="spinner-border spinner-border-sm"></span>
+                            <span class="ms-2">Đang phân tích...</span>
+                        }
+                        else
+                        {
+                            <span>🚀 Review Code</span>
+                        }
+
+                    </button>
+
+                </div>
+
+
+                <!-- RESULT -->
+                <div class="col-lg-5">
+
+                    <label class="fw-bold mb-2">Result</label>
+
+                    <div class="result-box">
+
+                        @if (responseDto != null)
+                        {
+                            <!-- <h6>Summary</h6> -->
+                            <p>@responseDto.Summary</p>
+
+                            @if (responseDto.DetectedBugs != null && responseDto.DetectedBugs.Any())
+                            {
+                                @foreach (var bug in responseDto.DetectedBugs)
+                                {
+                                    <div class="alert alert-warning">
+                                        Line @bug.Line : @bug.Description
+                                    </div>
+                                }
+                            }
+                            else
+                            {
+                                <div class="alert alert-success">
+                                    Không phát hiện lỗi
+                                </div>
+                            }
+                        }
+                        else
+                        {
+                            <p class="text-muted">Chưa có kết quả</p>
+                        }
+
+                    </div>
+
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+
+<style>
+
+    .code-editor {
+        height: 450px;
+        font-family: Consolas;
+        font-size: 14px;
+    }
+
+    .result-box {
+        height: 450px;
+        overflow: auto;
+        border: 1px solid #ddd;
+        padding: 10px;
+        border-radius: 6px;
+        background: #f9f9f9;
+    }
+
+</style>
+
+
+@code {
+
+    string codeContent = "";
+    bool isLoading = false;
+
+    ReviewResponseDto? responseDto;
+
+    async Task SendToReview()
+    {
+        Console.WriteLine("=== SendToReview START ===");
+
+        isLoading = true;
+        responseDto = null;
+
+        try
+        {
+            Console.WriteLine($"Code length: {codeContent?.Length ?? 0}");
+
+            var request = new ReviewRequestDto
+            {
+                Code = codeContent
+            };
+
+            Console.WriteLine("Sending POST https://localhost:7041/api/review");
+
+            var response = await Http.PostAsJsonAsync("api/review", request);
+
+            Console.WriteLine($"API status: {(int)response.StatusCode} {response.StatusCode}");
+
+            if (response.IsSuccessStatusCode)
+            {
+                responseDto =
+                    await response.Content.ReadFromJsonAsync<ReviewResponseDto>();
+
+                Console.WriteLine("Deserialized ReviewResponseDto successfully");
+            }
+            else
+            {
+                var errorBody = await response.Content.ReadAsStringAsync();
+                Console.WriteLine("API returned non-success status");
+                Console.WriteLine("Response body:");
+                Console.WriteLine(errorBody);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine("Exception in SendToReview:");
+            Console.WriteLine(ex.ToString());
+        }
+        finally
+        {
+            isLoading = false;
+            Console.WriteLine("=== SendToReview END ===");
+        }
+    }
+    void TestClick()
+    {
+        Console.WriteLine("Button clicked");
+    }
+
+}

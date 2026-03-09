@@ -1,0 +1,23 @@
+
+services:
+  ai-reviewer-api:
+    build:
+      context: .
+      dockerfile: AIReviewerAPI/Dockerfile
+    container_name: ai-reviewer-api
+    ports:
+      - "7041:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+
+  code-reviewer:
+    build:
+      context: .
+      dockerfile: CodeReviewer/Dockerfile
+    container_name: code-reviewer
+    ports:
+      - "7091:8090"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:8090
+
