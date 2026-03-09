@@ -1,0 +1,65 @@
+name: CI/CD - CodeReviewer
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'CodeReviewer/**'
+      - '.github/workflows/codereviewer-ci.yml'
+  pull_request:
+    paths:
+      - 'CodeReviewer/**'
+      - '.github/workflows/codereviewer-ci.yml'
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository_owner }}/code-reviewer
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore dependencies
+        run: dotnet restore CodeReviewer/CodeReviewer.csproj
+
+      - name: Build CodeReviewer
+        run: dotnet build CodeReviewer/CodeReviewer.csproj --configuration Release --no-restore
+
+  docker-publish:
+    name: Build & Push Docker image
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build Docker image
+        run: |
+          docker build -f CodeReviewer/Dockerfile \
+            -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest \
+            -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }} .
+
+      - name: Push Docker image
+        run: |
+          docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+
