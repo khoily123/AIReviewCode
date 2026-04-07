@@ -5,10 +5,13 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 
-builder.Services.AddScoped(sp => new HttpClient
+// Dùng IHttpClientFactory thay vì new HttpClient
+builder.Services.AddHttpClient("ReviewApi", (sp, client) =>
 {
-    // Gọi API qua docker-compose service name
-    BaseAddress = new Uri("http://ai-reviewer-api:8080/")
+    var config = sp.GetRequiredService<IConfiguration>();
+    var baseUrl = config["ApiBaseUrl"] ?? "https://localhost:7041/";
+    client.BaseAddress = new Uri(baseUrl);
+    client.Timeout = TimeSpan.FromSeconds(60);
 });
 
 var app = builder.Build();

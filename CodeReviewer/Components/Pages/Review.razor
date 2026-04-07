@@ -4,86 +4,96 @@
 @using AIReviewerAPI.DTOs
 @using System.Net.Http.Json
 
-@inject HttpClient Http
+@inject IHttpClientFactory HttpClientFactory
 
-<div class="container py-5">
+<div class="reviewer-container">
 
-    <div class="card shadow">
+    <div class="text-center mb-4">
+        <h2 class="hero-title">🔍 Paste your code & get instant AI review</h2>
+        <p class="text-muted">Powered by Gemini AI — find bugs, improve quality</p>
+    </div>
 
-        <div class="card-header bg-dark text-white">
-            <h4>🔍 AI Code Reviewer</h4>
+    <div class="row g-4">
+
+        <!-- CODE INPUT -->
+        <div class="col-lg-6">
+            <div class="panel">
+                <div class="panel-header">
+                    <span>📝 Code Input</span>
+                    <span class="badge bg-secondary">@(codeContent?.Length ?? 0) chars</span>
+                </div>
+                <textarea class="code-editor"
+                          @bind="codeContent"
+                          placeholder="// Paste your C# code here..."></textarea>
+            </div>
+
+            <button class="btn-review"
+                    @onclick="SendToReview"
+                    disabled="@isLoading">
+                @if (isLoading)
+                {
+                    <span class="spinner-border spinner-border-sm me-2"></span>
+                    <span>Đang phân tích...</span>
+                }
+                else
+                {
+                    <span>🚀 Review Code</span>
+                }
+            </button>
         </div>
 
-        <div class="card-body">
-
-            <div class="row">
-
-                <!-- CODE INPUT -->
-                <div class="col-lg-7">
-
-                    <label class="fw-bold mb-2">Code</label>
-
-                    <textarea class="form-control code-editor"
-                              @bind="codeContent"
-                              placeholder="// Paste code here"></textarea>
-
-                    <button class="btn btn-success mt-3 w-100"
-                            @onclick="SendToReview">
-
-                        @if (isLoading)
-                        {
-                            <span class="spinner-border spinner-border-sm"></span>
-                            <span class="ms-2">Đang phân tích...</span>
-                        }
-                        else
-                        {
-                            <span>🚀 Review Code</span>
-                        }
-
-                    </button>
-
+        <!-- RESULT -->
+        <div class="col-lg-6">
+            <div class="panel">
+                <div class="panel-header">
+                    <span>📋 Review Result</span>
+                    @if (responseDto != null)
+                    {
+                        <span class="badge bg-info">@(responseDto.DetectedBugs?.Count ?? 0) issues</span>
+                    }
                 </div>
+                <div class="result-content">
 
-
-                <!-- RESULT -->
-                <div class="col-lg-5">
-
-                    <label class="fw-bold mb-2">Result</label>
-
-                    <div class="result-box">
-
-                        @if (responseDto != null)
-                        {
-                            <!-- <h6>Summary</h6> -->
+                    @if (!string.IsNullOrEmpty(errorMessage))
+                    {
+                        <div class="alert alert-danger d-flex align-items-center gap-2">
+                            <span>⚠️</span> @errorMessage
+                        </div>
+                    }
+                    else if (responseDto != null)
+                    {
+                        <div class="summary-box">
+                            <strong>Summary</strong>
                             <p>@responseDto.Summary</p>
+                        </div>
 
-                            @if (responseDto.DetectedBugs != null && responseDto.DetectedBugs.Any())
+                        @if (responseDto.DetectedBugs != null && responseDto.DetectedBugs.Any())
+                        {
+                            @foreach (var bug in responseDto.DetectedBugs)
                             {
-                                @foreach (var bug in responseDto.DetectedBugs)
-                                {
-                                    <div class="alert alert-warning">
-                                        Line @bug.Line : @bug.Description
-                                    </div>
-                                }
-                            }
-                            else
-                            {
-                                <div class="alert alert-success">
-                                    Không phát hiện lỗi
+                                <div class="bug-item">
+                                    <div class="bug-line">Line @bug.Line</div>
+                                    <div class="bug-desc">@bug.Description</div>
                                 </div>
                             }
                         }
                         else
                         {
-                            <p class="text-muted">Chưa có kết quả</p>
+                            <div class="alert alert-success d-flex align-items-center gap-2">
+                                <span>✅</span> Không phát hiện lỗi — Code looks good!
+                            </div>
                         }
-
-                    </div>
+                    }
+                    else
+                    {
+                        <div class="empty-state">
+                            <span class="empty-icon">💡</span>
+                            <p>Paste code bên trái và nhấn <strong>Review Code</strong></p>
+                        </div>
+                    }
 
                 </div>
-
             </div>
-
         </div>
 
     </div>
@@ -93,15 +103,148 @@
 
 <style>
 
-    .code-editor {
-        height: 450px;
-        font-family: Consolas;
-        font-size: 14px;
+    /* ===== REVIEWER CONTAINER ===== */
+    .reviewer-container {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 2rem 1rem;
     }
 
-    .result-box {
-        height: 450px;
-        overflow: auto;
+    .hero-title {
+        font-weight: 700;
+        font-size: 1.6rem;
+        color: #1e293b;
+    }
+
+    /* ===== PANEL ===== */
+    .panel {
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        overflow: hidden;
+        background: #fff;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    }
+
+    .panel-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.75rem 1rem;
+        background: #1e293b;
+        color: #fff;
+        font-weight: 600;
+        font-size: 0.9rem;
+    }
+
+    /* ===== CODE EDITOR ===== */
+    .code-editor {
+        width: 100%;
+        height: 420px;
+        border: none;
+        outline: none;
+        padding: 1rem;
+        font-family: 'Cascadia Code', 'Fira Code', Consolas, monospace;
+        font-size: 13px;
+        line-height: 1.6;
+        background: #0f172a;
+        color: #e2e8f0;
+        resize: none;
+    }
+
+    .code-editor::placeholder {
+        color: #64748b;
+    }
+
+    /* ===== BUTTON ===== */
+    .btn-review {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        margin-top: 1rem;
+        padding: 0.8rem;
+        border: none;
+        border-radius: 10px;
+        background: linear-gradient(135deg, #10b981, #059669);
+        color: #fff;
+        font-size: 1rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+
+    .btn-review:hover:not(:disabled) {
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
+    }
+
+    .btn-review:disabled {
+        opacity: 0.7;
+        cursor: not-allowed;
+    }
+
+    /* ===== RESULT ===== */
+    .result-content {
+        height: 420px;
+        overflow-y: auto;
+        padding: 1rem;
+    }
+
+    .summary-box {
+        background: #f0fdf4;
+        border-left: 4px solid #10b981;
+        padding: 0.75rem 1rem;
+        border-radius: 6px;
+        margin-bottom: 1rem;
+    }
+
+    .summary-box strong {
+        color: #059669;
+        font-size: 0.85rem;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    .summary-box p {
+        margin: 0.4rem 0 0;
+        color: #334155;
+    }
+
+    /* ===== BUG ITEM ===== */
+    .bug-item {
+        background: #fffbeb;
+        border-left: 4px solid #f59e0b;
+        padding: 0.75rem 1rem;
+        border-radius: 6px;
+        margin-bottom: 0.75rem;
+    }
+
+    .bug-line {
+        font-weight: 700;
+        font-size: 0.8rem;
+        color: #d97706;
+        text-transform: uppercase;
+        margin-bottom: 0.25rem;
+    }
+
+    .bug-desc {
+        color: #451a03;
+        font-size: 0.9rem;
+    }
+
+    /* ===== EMPTY STATE ===== */
+    .empty-state {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 100%;
+        color: #94a3b8;
+    }
+
+    .empty-icon {
+        font-size: 3rem;
+        margin-bottom: 0.5rem;ow: auto;
         border: 1px solid #ddd;
         padding: 10px;
         border-radius: 6px;
@@ -115,60 +258,52 @@
 
     string codeContent = "";
     bool isLoading = false;
+    string? errorMessage;
 
     ReviewResponseDto? responseDto;
 
     async Task SendToReview()
     {
-        Console.WriteLine("=== SendToReview START ===");
+        // ✅ Validate input
+        if (string.IsNullOrWhiteSpace(codeContent))
+        {
+            errorMessage = "Vui lòng nhập code trước khi review.";
+            return;
+        }
 
         isLoading = true;
         responseDto = null;
+        errorMessage = null;
 
         try
         {
-            Console.WriteLine($"Code length: {codeContent?.Length ?? 0}");
+            var http = HttpClientFactory.CreateClient("ReviewApi");
 
             var request = new ReviewRequestDto
             {
                 Code = codeContent
             };
 
-            Console.WriteLine("Sending POST https://localhost:7041/api/review");
-
-            var response = await Http.PostAsJsonAsync("api/review", request);
-
-            Console.WriteLine($"API status: {(int)response.StatusCode} {response.StatusCode}");
+            var response = await http.PostAsJsonAsync("api/review", request);
 
             if (response.IsSuccessStatusCode)
             {
                 responseDto =
                     await response.Content.ReadFromJsonAsync<ReviewResponseDto>();
-
-                Console.WriteLine("Deserialized ReviewResponseDto successfully");
             }
             else
             {
-                var errorBody = await response.Content.ReadAsStringAsync();
-                Console.WriteLine("API returned non-success status");
-                Console.WriteLine("Response body:");
-                Console.WriteLine(errorBody);
+                errorMessage = $"API trả về lỗi: {(int)response.StatusCode} {response.StatusCode}";
             }
         }
         catch (Exception ex)
         {
-            Console.WriteLine("Exception in SendToReview:");
-            Console.WriteLine(ex.ToString());
+            errorMessage = $"Không thể kết nối API: {ex.Message}";
         }
         finally
         {
             isLoading = false;
-            Console.WriteLine("=== SendToReview END ===");
         }
-    }
-    void TestClick()
-    {
-        Console.WriteLine("Button clicked");
     }
 
 }

@@ -1,18 +1,20 @@
 ﻿@inherits LayoutComponentBase
 
-<div class="page">
-    <div class="sidebar">
-        <NavMenu />
-    </div>
-
-    <main>
-        <div class="top-row px-4">
-            <a href="https://learn.microsoft.com/aspnet/core/" target="_blank">About</a>
+<div class="page-wrapper">
+    <header class="app-header">
+        <div class="container d-flex align-items-center justify-content-between">
+            <div class="d-flex align-items-center gap-2">
+                <span class="logo-icon">🧠</span>
+                <span class="app-title">AI Code Reviewer</span>
+            </div>
+            <a href="https://github.com/khoily123/AIReviewCode" target="_blank" class="github-link">
+                ⭐ GitHub
+            </a>
         </div>
+    </header>
 
-        <article class="content px-4">
-            @Body
-        </article>
+    <main class="app-content">
+        @Body
     </main>
 </div>
 

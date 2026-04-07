@@ -7,6 +7,12 @@ namespace Services
 {
     public class AIReviewService : IAIReviewService
     {
+        // ✅ Tái sử dụng options
+        private static readonly JsonSerializerOptions _jsonOptions = new()
+        {
+            PropertyNameCaseInsensitive = true
+        };
+
         private readonly IAIReviewRepository _repository;
 
         public AIReviewService(IAIReviewRepository repository)
@@ -45,21 +51,19 @@ Code to analyze:
 
             var aiResult = await _repository.CallAI(prompt);
 
-            var modelResult = JsonSerializer.Deserialize<ReviewResponse>(
-                 aiResult,
-                 new JsonSerializerOptions { PropertyNameCaseInsensitive = true }
-             ) ?? new ReviewResponse();
+            var modelResult = JsonSerializer.Deserialize<ReviewResponse>(aiResult, _jsonOptions)
+                ?? new ReviewResponse();
 
             var dtoResult = new ReviewResponseDto
             {
                 Summary = modelResult.Message,
-                ReviewedAt = DateTime.Now,
+                ReviewedAt = DateTime.UtcNow, //  Dùng UtcNow thay vì Now
                 DetectedBugs = modelResult.Bugs?.Select(b => new BugDto
                 {
                     Line = b.Line,
                     Description = b.Description,
-                    Severity = "High" // Bạn có thể thêm logic phân loại dựa trên Description
-                }).ToList() ?? new List<BugDto>()
+                    Severity = "High"
+                }).ToList() ?? []
             };
 
             return dtoResult;

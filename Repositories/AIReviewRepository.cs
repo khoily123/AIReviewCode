@@ -21,10 +21,8 @@ namespace Repositories
 
         public async Task<string> CallAI(string prompt)
         {
-            // Đây là key AIzaSy... bạn đang có trong config
             var apiKey = _config["OpenAI:ApiKey"];
 
-            // Cấu trúc Body của Gemini khác hoàn toàn với OpenAI
             var requestBody = new
             {
                 contents = new[]
@@ -47,27 +45,33 @@ namespace Repositories
 
             if (!response.IsSuccessStatusCode)
             {
-                throw new Exception($"Gemini API Error: {response.StatusCode} - {json}");
+                throw new HttpRequestException($"Gemini API Error: {response.StatusCode} - {json}");
             }
 
-            var doc = JsonDocument.Parse(json);
+            //  using để tự dispose JsonDocument
+            using var doc = JsonDocument.Parse(json);
 
             var text = doc.RootElement
-             .GetProperty("candidates")[0]
-             .GetProperty("content")
-             .GetProperty("parts")[0]
-             .GetProperty("text")
-             .GetString();
+                .GetProperty("candidates")[0]
+                .GetProperty("content")
+                .GetProperty("parts")[0]
+                .GetProperty("text")
+                .GetString();
 
-                    var start = text.IndexOf("{");
-                    var end = text.LastIndexOf("}");
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                throw new InvalidOperationException("Gemini returned empty response.");
+            }
 
-                    if (start >= 0 && end > start)
-                    {
-                        text = text.Substring(start, end - start + 1);
-                    }
+            var start = text.IndexOf('{');
+            var end = text.LastIndexOf('}');
 
-                    return text;
+            if (start >= 0 && end > start)
+            {
+                return text.Substring(start, end - start + 1);
+            }
+
+            throw new InvalidOperationException("Gemini response does not contain valid JSON.");
         }
     }
 }

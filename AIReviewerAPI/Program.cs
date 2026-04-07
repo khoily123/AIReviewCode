@@ -6,7 +6,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowBlazor", policy =>
-        policy.AllowAnyOrigin()
+        policy.WithOrigins("https://localhost:7249") // Chỉ cho phép Blazor app
               .AllowAnyMethod()
               .AllowAnyHeader());
 });
