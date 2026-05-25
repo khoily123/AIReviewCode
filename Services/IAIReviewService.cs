@@ -1,4 +1,4 @@
-﻿using AIReviewerAPI.DTOs;
+using AIReviewerAPI.DTOs;
 using Models;
 using System;
 using System.Collections.Generic;
@@ -10,7 +10,9 @@ namespace Services
 {
     public interface IAIReviewService
     {
-        Task<ReviewResponseDto> ReviewCode(string code);
-
+        Task<ReviewResponseDto> ReviewCode(ReviewRequestDto request);
+        Task<ChatResponseDto> ChatWithCode(ChatRequestDto request);
+        IAsyncEnumerable<string> ChatWithCodeStream(ChatRequestDto request, CancellationToken ct = default);
+        Task<TranslateResponseDto> TranslateCode(TranslateRequestDto request);
     }
 }

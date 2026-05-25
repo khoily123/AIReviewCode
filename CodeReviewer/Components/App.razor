@@ -11,12 +11,64 @@
     <link rel="stylesheet" href="app.css" />
     <link rel="stylesheet" href="CodeReviewer.styles.css" />
     <link rel="icon" type="image/png" href="favicon.png" />
+    <!-- Thư viện PrismJS cho Syntax Highlighting (Theme: Tomorrow Night) -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet" />
     <HeadOutlet />
 </head>
 
 <body>
     <Routes @rendermode="InteractiveServer" />
     <script src="_framework/blazor.web.js"></script>
+    
+    <!-- PrismJS Scripts -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-csharp.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-java.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-go.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-rust.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-kotlin.min.js"></script>
+
+    <!-- Script Copy to Clipboard & Trigger Prism -->
+    <script>
+        window.clipboardCopy = {
+            copyText: function (text) {
+                navigator.clipboard.writeText(text).then(function () {
+                    // console.log("Copied to clipboard!");
+                })
+                .catch(function (error) {
+                    alert("Copy failed: " + error);
+                });
+            }
+        };
+
+        window.highlightCode = function () {
+            if (window.Prism) {
+                Prism.highlightAll();
+            }
+        };
+
+        window.renderMermaid = async function () {
+            if (window.mermaid) {
+                try {
+                    mermaid.initialize({ startOnLoad: false, theme: 'default' });
+                    await mermaid.run({
+                        querySelector: '.mermaid'
+                    });
+                } catch(e) {
+                    console.error("Mermaid parsing error", e);
+                }
+            }
+        };
+
+        window.scrollToBottom = function (element) {
+            if (element) element.scrollTop = element.scrollHeight;
+        };
+
+    </script>
+    <!-- Mermaid.js -->
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10.4.0/dist/mermaid.min.js"></script>
 </body>
 
 </html>

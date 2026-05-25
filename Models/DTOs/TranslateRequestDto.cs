@@ -2,11 +2,11 @@ using System.ComponentModel.DataAnnotations;
 
 namespace AIReviewerAPI.DTOs
 {
-    public class ReviewRequestDto
+    public class TranslateRequestDto
     {
         [Required]
         public string Code { get; set; } = string.Empty;
 
-        public string Persona { get; set; } = "Standard";
+        public string TargetLanguage { get; set; } = "Python";
     }
 }

@@ -5,231 +5,742 @@
 @using System.Net.Http.Json
 
 @inject IHttpClientFactory HttpClientFactory
+@inject IJSRuntime JS
 
-<div class="reviewer-container">
+<div class="reviewer-wrapper">
+    <div class="reviewer-container">
 
-    <div class="text-center mb-4">
-        <h2 class="hero-title">🔍 Paste your code & get instant AI review</h2>
-        <p class="text-muted">Powered by Gemini AI — find bugs, improve quality</p>
-    </div>
-
-    <div class="row g-4">
-
-        <!-- CODE INPUT -->
-        <div class="col-lg-6">
-            <div class="panel">
-                <div class="panel-header">
-                    <span>📝 Code Input</span>
-                    <span class="badge bg-secondary">@(codeContent?.Length ?? 0) chars</span>
-                </div>
-                <textarea class="code-editor"
-                          @bind="codeContent"
-                          placeholder="// Paste your C# code here..."></textarea>
-            </div>
-
-            <button class="btn-review"
-                    @onclick="SendToReview"
-                    disabled="@isLoading">
-                @if (isLoading)
-                {
-                    <span class="spinner-border spinner-border-sm me-2"></span>
-                    <span>Đang phân tích...</span>
-                }
-                else
-                {
-                    <span>🚀 Review Code</span>
-                }
-            </button>
+        <div class="text-center mb-5 mt-3">
+            <div class="badge-premium mb-3">✨ AI-Powered Code Assistant</div>
+            <h2 class="hero-title">Paste your code & get instant AI review</h2>
+            <p class="text-muted fs-5">Powered by Gemini AI — Find bugs, improve quality, and chat with your code.</p>
         </div>
 
-        <!-- RESULT -->
-        <div class="col-lg-6">
-            <div class="panel">
-                <div class="panel-header">
-                    <span>📋 Review Result</span>
+        <div class="row g-4">
+            <!-- CODE INPUT -->
+            <div class="col-lg-6 d-flex flex-column">
+                <div class="panel flex-grow-1">
+                    <div class="panel-header">
+                        <div class="d-flex align-items-center gap-2">
+                            <i class="bi bi-code-slash text-info"></i>
+                            <span>Code Input</span>
+                        </div>
+                        <span class="badge bg-secondary opacity-75 rounded-pill">@(codeContent?.Length ?? 0) chars</span>
+                    </div>
+                    <div class="p-3 pb-0 bg-white border-bottom">
+                        <div class="d-flex align-items-center gap-3 mb-2">
+                            <label class="fw-bold text-muted" style="font-size: 0.9rem;">
+                                <i class="bi bi-person-badge-fill text-primary"></i> Persona:
+                            </label>
+                            <select class="form-select form-select-sm shadow-sm w-auto" @bind="selectedPersona" style="border-radius: 8px; font-weight: 500;">
+                                <option value="Standard">👨‍💻 Cố vấn tiêu chuẩn</option>
+                                <option value="GordonRamsay">👨‍🍳 Gordon Ramsay (Khắt khe)</option>
+                                <option value="AnimeWaifu">🌸 Anime Waifu (Đáng yêu)</option>
+                            </select>
+                        </div>
+                    </div>
+                    <textarea class="code-editor"
+                              @bind="codeContent"
+                              placeholder="// Paste your C# code here...
+// AI will analyze and fix it for you!"></textarea>
+                </div>
+
+                <button class="btn-review mt-4 flex-shrink-0"
+                        @onclick="SendToReview"
+                        disabled="@isLoading">
+                    @if (isLoading)
+                    {
+                        <span class="spinner-border spinner-border-sm me-2"></span>
+                        <span>Đang phân tích hệ thống...</span>
+                    }
+                    else
+                    {
+                        <span><i class="bi bi-rocket-takeoff me-2"></i> Review Code</span>
+                    }
+                </button>
+
+                <div class="translate-bar mt-3 d-flex gap-2 flex-shrink-0">
+                    <select class="form-select shadow-sm" @bind="targetLanguage" style="border-radius: 10px; font-weight: 500; font-size: 0.95rem;">
+                        <option value="Python">🐍 Python</option>
+                        <option value="TypeScript">📘 TypeScript</option>
+                        <option value="JavaScript">💛 JavaScript</option>
+                        <option value="CSharp">💜 C#</option>
+                        <option value="Java">☕ Java</option>
+                        <option value="Go">🔵 Go</option>
+                        <option value="Rust">🦀 Rust</option>
+                        <option value="Kotlin">🟣 Kotlin</option>
+                    </select>
+                    <button class="btn-translate flex-shrink-0" @onclick="DoTranslate" disabled="@isTranslating">
+                        @if (isTranslating)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1"></span>
+                        }
+                        else
+                        {
+                            <i class="bi bi-translate me-1"></i>
+                        }
+                        Dịch
+                    </button>
+                </div>
+            </div>
+
+            <!-- RESULT -->
+            <div class="col-lg-6 d-flex flex-column">
+                <div class="panel flex-grow-1 d-flex flex-column">
+                    <div class="panel-header">
+                        <div class="d-flex align-items-center gap-2">
+                            <i class="bi bi-clipboard2-check text-success"></i>
+                            <span>Review Result</span>
+                        </div>
+                        @if (responseDto != null)
+                        {
+                            <span class="badge bg-danger rounded-pill pulse-animation">
+                                @(responseDto.DetectedBugs?.Count ?? 0) issues
+                            </span>
+                        }
+                    </div>
+                    
                     @if (responseDto != null)
                     {
-                        <span class="badge bg-info">@(responseDto.DetectedBugs?.Count ?? 0) issues</span>
-                    }
-                </div>
-                <div class="result-content">
-
-                    @if (!string.IsNullOrEmpty(errorMessage))
-                    {
-                        <div class="alert alert-danger d-flex align-items-center gap-2">
-                            <span>⚠️</span> @errorMessage
+                        <div class="tab-header">
+                            <button class="tab-btn @(activeTab == "Bugs" ? "active" : "")" 
+                                    @onclick="@(() => activeTab = "Bugs")">
+                                <i class="bi bi-bug me-1"></i> Phân tích
+                            </button>
+                            <button class="tab-btn @(activeTab == "Flowchart" ? "active" : "")" 
+                                    @onclick="@(() => activeTab = "Flowchart")">
+                                <i class="bi bi-diagram-3 me-1"></i> Sơ đồ thuật toán
+                            </button>
+                            <button class="tab-btn @(activeTab == "FixedCode" ? "active" : "")"
+                                    @onclick="@(() => activeTab = "FixedCode")">
+                                <i class="bi bi-magic me-1"></i> Auto Fix
+                            </button>
+                            <button class="tab-btn @(activeTab == "Diff" ? "active" : "")"
+                                    @onclick="@(() => activeTab = "Diff")">
+                                <i class="bi bi-file-diff me-1"></i> Diff
+                            </button>
+                            <button class="tab-btn @(activeTab == "Tests" ? "active" : "")"
+                                    @onclick="@(() => activeTab = "Tests")">
+                                <i class="bi bi-clipboard2-pulse me-1"></i> Unit Tests
+                            </button>
                         </div>
                     }
-                    else if (responseDto != null)
-                    {
-                        <div class="summary-box">
-                            <strong>Summary</strong>
-                            <p>@responseDto.Summary</p>
-                        </div>
 
-                        @if (responseDto.DetectedBugs != null && responseDto.DetectedBugs.Any())
+                    <div class="result-content flex-grow-1 custom-scrollbar">
+                        @if (!string.IsNullOrEmpty(errorMessage))
                         {
-                            @foreach (var bug in responseDto.DetectedBugs)
+                            <div class="alert alert-danger d-flex align-items-center gap-3 glass-alert">
+                                <span class="fs-3">⚠️</span> 
+                                <div><strong>Lỗi hệ thống!</strong><br/>@errorMessage</div>
+                            </div>
+                        }
+                        else if (responseDto != null)
+                        {
+                            @if (activeTab == "Bugs")
                             {
-                                <div class="bug-item">
-                                    <div class="bug-line">Line @bug.Line</div>
-                                    <div class="bug-desc">@bug.Description</div>
+                                <div class="scores-container d-flex flex-wrap gap-4 mb-4 mt-1">
+                                    <div class="score-item flex-grow-1">
+                                        <div class="d-flex justify-content-between text-muted mb-1" style="font-size: 0.85rem;">
+                                            <span class="fw-bold"><i class="bi bi-lightning-charge-fill text-warning"></i> Hiệu suất</span>
+                                            <span class="fw-bold text-dark">@responseDto.PerformanceScore/100</span>
+                                        </div>
+                                        <div class="progress" style="height: 10px; border-radius: 10px; background: #f1f5f9;">
+                                            <div class="progress-bar bg-warning" role="progressbar" style="width: @(responseDto.PerformanceScore)%; transition: width 1.5s cubic-bezier(0.4, 0, 0.2, 1);"></div>
+                                        </div>
+                                    </div>
+                                    <div class="score-item flex-grow-1">
+                                        <div class="d-flex justify-content-between text-muted mb-1" style="font-size: 0.85rem;">
+                                            <span class="fw-bold"><i class="bi bi-shield-lock-fill text-danger"></i> Bảo mật</span>
+                                            <span class="fw-bold text-dark">@responseDto.SecurityScore/100</span>
+                                        </div>
+                                        <div class="progress" style="height: 10px; border-radius: 10px; background: #f1f5f9;">
+                                            <div class="progress-bar bg-danger" role="progressbar" style="width: @(responseDto.SecurityScore)%; transition: width 1.5s cubic-bezier(0.4, 0, 0.2, 1); background-image: linear-gradient(45deg,rgba(255,255,255,.15) 25%,transparent 25%,transparent 50%,rgba(255,255,255,.15) 50%,rgba(255,255,255,.15) 75%,transparent 75%,transparent);"></div>
+                                        </div>
+                                    </div>
+                                    <div class="score-item flex-grow-1">
+                                        <div class="d-flex justify-content-between text-muted mb-1" style="font-size: 0.85rem;">
+                                            <span class="fw-bold"><i class="bi bi-code-square text-success"></i> Khả năng bảo trì</span>
+                                            <span class="fw-bold text-dark">@responseDto.MaintainabilityScore/100</span>
+                                        </div>
+                                        <div class="progress" style="height: 10px; border-radius: 10px; background: #f1f5f9;">
+                                            <div class="progress-bar bg-success" role="progressbar" style="width: @(responseDto.MaintainabilityScore)%; transition: width 1.5s cubic-bezier(0.4, 0, 0.2, 1);"></div>
+                                        </div>
+                                    </div>
                                 </div>
+
+                                <div class="summary-box position-relative">
+                                    <strong><i class="bi bi-card-text me-1"></i> Tổng quan (Summary)</strong>
+                                    <p>@responseDto.Summary</p>
+                                </div>
+
+                                @if (responseDto.DetectedBugs != null && responseDto.DetectedBugs.Any())
+                                {
+                                    @if (!string.IsNullOrEmpty(responseDto.HackerExploit))
+                                    {
+                                        <div class="hacker-alert mb-4">
+                                            <div class="hacker-header">
+                                                <i class="bi bi-incognito"></i> <span>Hacker Exploit Simulator</span>
+                                            </div>
+                                            <div class="hacker-body">
+                                                <p class="mb-2 text-danger fw-bold">⚠️ Cảnh báo lỗ hổng bảo mật nghiêm trọng!</p>
+                                                <p class="mb-2">Một hacker có thể tấn công hệ thống của bạn bằng đoạn mã sau:</p>
+                                                <pre class="hacker-code"><code>@responseDto.HackerExploit</code></pre>
+                                            </div>
+                                        </div>
+                                    }
+
+                                    <div class="mt-3 mb-2 fw-bold text-muted ps-1">Danh sách lỗi phát hiện:</div>
+                                    @foreach (var bug in responseDto.DetectedBugs)
+                                    {
+                                        <div class="bug-item">
+                                            <div class="d-flex align-items-start gap-3">
+                                                <div class="bug-line">Line @bug.Line</div>
+                                                <div class="bug-desc flex-grow-1">@bug.Description</div>
+                                            </div>
+                                        </div>
+                                    }
+                                }
+                                else
+                                {
+                                    <div class="alert alert-success d-flex align-items-center gap-3 glass-alert-success mt-4">
+                                        <span class="fs-1">🎉</span> 
+                                        <div>
+                                            <strong>Tuyệt vời!</strong><br/>
+                                            Code của bạn trông rất chuẩn chỉ. Không phát hiện lỗi nào!
+                                        </div>
+                                    </div>
+                                }
+                            }
+                            else if (activeTab == "Flowchart")
+                            {
+                                <div class="alert alert-info glass-alert-info mb-3 d-flex align-items-center">
+                                    <i class="bi bi-info-circle-fill me-2"></i> 
+                                    <span>AI đã phân tích và vẽ ra sơ đồ luồng thuật toán (Flowchart) cho đoạn code của bạn.</span>
+                                </div>
+                                @if (!string.IsNullOrEmpty(responseDto.MermaidChart))
+                                {
+                                    <div class="flowchart-container custom-scrollbar d-flex justify-content-center align-items-start p-4 bg-white rounded border">
+                                        <div class="mermaid">
+                                            @{
+                                                var rawChart = responseDto.MermaidChart ?? "";
+                                                if (rawChart.Contains("```mermaid"))
+                                                {
+                                                    rawChart = rawChart.Replace("```mermaid", "").Replace("```", "").Trim();
+                                                }
+                                            }
+                                            @rawChart
+                                        </div>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <div class="text-center text-muted mt-5">
+                                        <i class="bi bi-diagram-2 fs-1"></i>
+                                        <p class="mt-2">Không thể tạo sơ đồ cho đoạn code này.</p>
+                                    </div>
+                                }
+                            }
+                            else if (activeTab == "FixedCode")
+                            {
+                                <div class="d-flex justify-content-between align-items-center alert alert-info glass-alert-info mb-3">
+                                    <div>
+                                        <i class="bi bi-info-circle-fill me-2"></i>
+                                        Đoạn code đã được AI làm sạch và tối ưu.
+                                    </div>
+                                    <button class="btn btn-sm btn-primary fw-bold px-3 shadow-sm" @onclick="CopyFixedCode" style="border-radius: 8px; transition: all 0.3s;">
+                                        <i class="bi @(isCopied ? "bi-check2-all" : "bi-clipboard") me-1"></i> @(isCopied ? "Đã Copy!" : "Copy")
+                                    </button>
+                                </div>
+                                <div class="code-preview-container custom-scrollbar">
+                                    <pre class="m-0"><code class="language-csharp">@responseDto.FixedCode</code></pre>
+                                </div>
+                            }
+                            else if (activeTab == "Diff")
+                            {
+                                <div class="alert alert-secondary glass-alert-info mb-3 d-flex align-items-center">
+                                    <i class="bi bi-file-diff me-2"></i>
+                                    <span>So sánh code gốc (trái) và code đã sửa (phải). <span class="badge bg-danger">— Xóa</span> <span class="badge bg-success ms-1">+ Thêm</span></span>
+                                </div>
+                                @if (string.IsNullOrEmpty(responseDto.FixedCode))
+                                {
+                                    <div class="text-center text-muted mt-5">
+                                        <i class="bi bi-file-diff fs-1"></i>
+                                        <p class="mt-2">Không có code đã sửa để so sánh.</p>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <div class="diff-container custom-scrollbar">
+                                        @foreach (var line in ComputeDiff(codeContent, responseDto.FixedCode ?? ""))
+                                        {
+                                            <div class="diff-line diff-@line.Type">
+                                                <span class="diff-prefix">@(line.Type == "insert" ? "+" : line.Type == "delete" ? "-" : " ")</span>
+                                                <span class="diff-content">@line.Content</span>
+                                            </div>
+                                        }
+                                    </div>
+                                }
+                            }
+                            else if (activeTab == "Tests")
+                            {
+                                <div class="d-flex justify-content-between align-items-center alert alert-info glass-alert-info mb-3">
+                                    <div>
+                                        <i class="bi bi-clipboard2-pulse me-2"></i>
+                                        Unit Tests được AI tự động tạo ra bằng xUnit.
+                                    </div>
+                                    <button class="btn btn-sm btn-primary fw-bold px-3 shadow-sm" @onclick="CopyUnitTests" style="border-radius: 8px; transition: all 0.3s;">
+                                        <i class="bi @(isTestsCopied ? "bi-check2-all" : "bi-clipboard") me-1"></i> @(isTestsCopied ? "Đã Copy!" : "Copy")
+                                    </button>
+                                </div>
+                                @if (string.IsNullOrEmpty(responseDto.UnitTests))
+                                {
+                                    <div class="text-center text-muted mt-5">
+                                        <i class="bi bi-clipboard2-x fs-1"></i>
+                                        <p class="mt-2">Không thể tạo unit tests cho đoạn code này.</p>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <div class="code-preview-container custom-scrollbar">
+                                        <pre class="m-0"><code class="language-csharp">@responseDto.UnitTests</code></pre>
+                                    </div>
+                                }
                             }
                         }
                         else
                         {
-                            <div class="alert alert-success d-flex align-items-center gap-2">
-                                <span>✅</span> Không phát hiện lỗi — Code looks good!
+                            <div class="empty-state">
+                                <div class="empty-icon-wrapper pulse-animation-slow">
+                                    <span class="empty-icon">✨</span>
+                                </div>
+                                <h4>Chưa có dữ liệu</h4>
+                                <p>Hãy dán code vào khung bên trái và bấm <strong>Review Code</strong> để bắt đầu!</p>
                             </div>
                         }
-                    }
-                    else
-                    {
-                        <div class="empty-state">
-                            <span class="empty-icon">💡</span>
-                            <p>Paste code bên trái và nhấn <strong>Review Code</strong></p>
-                        </div>
-                    }
-
+                    </div>
                 </div>
             </div>
         </div>
 
-    </div>
+        <!-- TRANSLATION RESULT -->
+        @if (translationResult != null)
+        {
+            <div class="row mt-4">
+                <div class="col-12">
+                    <div class="panel translation-panel">
+                        <div class="panel-header">
+                            <div class="d-flex align-items-center gap-2">
+                                <i class="bi bi-translate text-warning"></i>
+                                <span>
+                                    Bản dịch:
+                                    @if (!string.IsNullOrEmpty(translationResult.SourceLanguage))
+                                    {
+                                        <span class="badge bg-secondary ms-1 me-1">@translationResult.SourceLanguage</span>
+                                        <i class="bi bi-arrow-right me-1"></i>
+                                    }
+                                    <span class="badge bg-warning text-dark ms-1">@translatedToLanguage</span>
+                                </span>
+                            </div>
+                            @if (!string.IsNullOrEmpty(translationResult.TranslatedCode))
+                            {
+                                <button class="btn btn-sm btn-outline-light fw-bold px-3" @onclick="CopyTranslation" style="border-radius: 8px;">
+                                    <i class="bi @(isTranslationCopied ? "bi-check2-all" : "bi-clipboard") me-1"></i> @(isTranslationCopied ? "Đã Copy!" : "Copy")
+                                </button>
+                            }
+                        </div>
 
+                        @if (!string.IsNullOrEmpty(translationResult.ErrorMessage))
+                        {
+                            <div class="alert alert-danger m-3 d-flex align-items-center gap-2">
+                                <span class="fs-4">⚠️</span>
+                                <div><strong>Lỗi!</strong> @translationResult.ErrorMessage</div>
+                            </div>
+                        }
+                        else
+                        {
+                            @if (!string.IsNullOrEmpty(translationResult.Notes))
+                            {
+                                <div class="translation-notes">
+                                    <i class="bi bi-lightbulb-fill text-warning me-2"></i>
+                                    <strong>Ghi chú dịch thuật:</strong> @translationResult.Notes
+                                </div>
+                            }
+                            <div class="code-preview-container custom-scrollbar translation-code">
+                                <pre class="m-0"><code class="@GetPrismClass(translatedToLanguage)">@translationResult.TranslatedCode</code></pre>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+        }
+
+        <!-- CHAT WITH CODE SECTION -->
+        @if (responseDto != null)
+        {
+            <div class="row mt-5 mb-5 pb-5">
+                <div class="col-12">
+                    <div class="panel chat-panel">
+                        <div class="panel-header bg-gradient-dark">
+                            <div class="d-flex align-items-center gap-2">
+                                <i class="bi bi-chat-dots-fill text-primary"></i>
+                                <span>Trợ lý AI (Chat với Code)</span>
+                            </div>
+                            <span class="badge bg-primary rounded-pill">Trực tuyến</span>
+                        </div>
+                        <div class="chat-container p-4 custom-scrollbar" @ref="chatContainerRef">
+                            @if (chatHistory.Count == 0)
+                            {
+                                <div class="d-flex justify-content-center align-items-center h-100">
+                                    <div class="text-center text-muted chat-placeholder">
+                                        <i class="bi bi-robot fs-1 mb-2 text-primary opacity-50"></i>
+                                        <h5>AI đã sẵn sàng!</h5>
+                                        <p>Hãy hỏi tôi bất kỳ điều gì về đoạn code trên.<br/>(VD: "Tại sao lỗi dòng 5?", "Sửa hàm này dùng LINQ")</p>
+                                    </div>
+                                </div>
+                            }
+                            
+                            @foreach(var msg in chatHistory)
+                            {
+                                <div class="d-flex mb-4 @(msg.IsUser ? "justify-content-end" : "justify-content-start")">
+                                    @if (!msg.IsUser) { <div class="chat-avatar bg-gradient-dark me-2"><i class="bi bi-robot"></i></div> }
+                                    
+                                    <div style="max-width: 75%;">
+                                        <div class="chat-bubble @(msg.IsUser ? "chat-bubble-user" : "chat-bubble-ai")">
+                                            @msg.Text
+                                        </div>
+                                    </div>
+
+                                    @if (msg.IsUser) { <div class="chat-avatar bg-primary ms-2"><i class="bi bi-person-fill"></i></div> }
+                                </div>
+                            }
+                            @if(isChatting && !isStreaming)
+                            {
+                                <div class="d-flex mb-4 justify-content-start">
+                                    <div class="chat-avatar bg-gradient-dark me-2"><i class="bi bi-robot"></i></div>
+                                    <div class="chat-bubble chat-bubble-ai d-flex align-items-center gap-2">
+                                        <div class="typing-dot"></div>
+                                        <div class="typing-dot" style="animation-delay: 0.2s"></div>
+                                        <div class="typing-dot" style="animation-delay: 0.4s"></div>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                        <div class="p-3 bg-white d-flex gap-3 align-items-center chat-input-area border-top">
+                            <input type="text" class="form-control chat-input" 
+                                   @bind="chatInput" @bind:event="oninput" @onkeyup="HandleChatKeyUp" 
+                                   placeholder="Nhập câu hỏi của bạn..." />
+                            <button class="btn-send" @onclick="SendChat" disabled="@(isChatting || string.IsNullOrWhiteSpace(chatInput))">
+                                <i class="bi bi-send-fill"></i> Gửi
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+
+    </div>
 </div>
 
-
 <style>
+    @@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Fira+Code:wght@400;500&display=swap');
+    @@import url('https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css');
 
-    /* ===== REVIEWER CONTAINER ===== */
+    body {
+        background-color: #f1f5f9;
+        font-family: 'Outfit', sans-serif;
+    }
+
+    .reviewer-wrapper {
+        min-height: 100vh;
+        background: radial-gradient(circle at top right, rgba(99, 102, 241, 0.05), transparent 400px),
+                    radial-gradient(circle at bottom left, rgba(236, 72, 153, 0.05), transparent 400px);
+    }
+
     .reviewer-container {
-        max-width: 1200px;
+        max-width: 1400px;
         margin: 0 auto;
-        padding: 2rem 1rem;
+        padding: 3rem 1.5rem;
+    }
+
+    /* ===== HERO ===== */
+    .badge-premium {
+        display: inline-block;
+        padding: 0.4rem 1rem;
+        background: rgba(99, 102, 241, 0.1);
+        color: #4f46e5;
+        border-radius: 20px;
+        font-weight: 600;
+        font-size: 0.9rem;
+        border: 1px solid rgba(99, 102, 241, 0.2);
     }
 
     .hero-title {
-        font-weight: 700;
-        font-size: 1.6rem;
-        color: #1e293b;
+        font-weight: 800;
+        font-size: 2.8rem;
+        background: linear-gradient(135deg, #4f46e5, #9333ea, #db2777);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        animation: gradientShift 6s ease infinite;
+        background-size: 200% 200%;
+        margin-bottom: 0.5rem;
     }
 
-    /* ===== PANEL ===== */
+    @@keyframes gradientShift {
+        0% { background-position: 0% 50%; }
+        50% { background-position: 100% 50%; }
+        100% { background-position: 0% 50%; }
+    }
+
+    /* ===== PANELS ===== */
     .panel {
-        border: 1px solid #e2e8f0;
-        border-radius: 12px;
+        background: #ffffff;
+        border: 1px solid rgba(226, 232, 240, 0.8);
+        border-radius: 16px;
+        box-shadow: 0 10px 40px -10px rgba(0,0,0,0.08);
+        transition: transform 0.3s ease, box-shadow 0.3s ease;
         overflow: hidden;
-        background: #fff;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    }
+    .panel:hover {
+        box-shadow: 0 20px 40px -10px rgba(0,0,0,0.12);
     }
 
     .panel-header {
+        background: #0f172a;
+        color: #f8fafc;
+        padding: 1rem 1.5rem;
+        font-weight: 600;
+        font-size: 1rem;
+        border-bottom: 1px solid #1e293b;
         display: flex;
         justify-content: space-between;
         align-items: center;
-        padding: 0.75rem 1rem;
-        background: #1e293b;
-        color: #fff;
-        font-weight: 600;
-        font-size: 0.9rem;
+    }
+
+    .bg-gradient-dark {
+        background: linear-gradient(to right, #0f172a, #1e293b);
     }
 
     /* ===== CODE EDITOR ===== */
     .code-editor {
         width: 100%;
-        height: 420px;
+        height: 480px;
         border: none;
         outline: none;
-        padding: 1rem;
-        font-family: 'Cascadia Code', 'Fira Code', Consolas, monospace;
-        font-size: 13px;
-        line-height: 1.6;
+        padding: 1.5rem;
+        font-family: 'Fira Code', Consolas, monospace;
+        font-size: 14.5px;
+        line-height: 1.7;
         background: #0f172a;
         color: #e2e8f0;
         resize: none;
     }
-
     .code-editor::placeholder {
-        color: #64748b;
+        color: #475569;
+        font-style: italic;
+    }
+    .code-editor:focus {
+        background: #111827;
+    }
+    
+    .code-preview-container {
+        height: 380px;
+        background: #2d2d2d;
+        border-radius: 8px;
+        overflow: auto;
+        padding: 1.5rem;
+    }
+    
+    .code-preview-container pre {
+        background: transparent !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        text-shadow: none !important;
+        white-space: pre-wrap;
+        word-wrap: break-word;
     }
 
-    /* ===== BUTTON ===== */
+    /* Custom Scrollbar */
+    .custom-scrollbar::-webkit-scrollbar,
+    .code-editor::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-track,
+    .code-editor::-webkit-scrollbar-track {
+        background: transparent;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb,
+    .code-editor::-webkit-scrollbar-thumb {
+        background: #cbd5e1;
+        border-radius: 4px;
+    }
+    .code-editor::-webkit-scrollbar-thumb {
+        background: #334155;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+        background: #94a3b8;
+    }
+
+    /* ===== BUTTONS ===== */
     .btn-review {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        width: 100%;
-        margin-top: 1rem;
-        padding: 0.8rem;
+        background: linear-gradient(135deg, #4f46e5, #7c3aed);
         border: none;
-        border-radius: 10px;
-        background: linear-gradient(135deg, #10b981, #059669);
-        color: #fff;
-        font-size: 1rem;
-        font-weight: 600;
-        cursor: pointer;
-        transition: all 0.2s;
+        padding: 1.1rem;
+        border-radius: 12px;
+        color: white;
+        font-weight: 700;
+        font-size: 1.15rem;
+        text-transform: uppercase;
+        letter-spacing: 1.5px;
+        box-shadow: 0 4px 15px rgba(124, 58, 237, 0.4);
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     }
-
     .btn-review:hover:not(:disabled) {
-        transform: translateY(-1px);
-        box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
+        transform: translateY(-3px);
+        box-shadow: 0 8px 25px rgba(124, 58, 237, 0.6);
     }
-
     .btn-review:disabled {
         opacity: 0.7;
+        transform: none;
+        box-shadow: none;
         cursor: not-allowed;
     }
 
-    /* ===== RESULT ===== */
+    /* ===== TABS ===== */
+    .tab-header {
+        display: flex;
+        background: #f8fafc;
+        border-bottom: 1px solid #e2e8f0;
+        padding: 0.5rem 1rem 0;
+        gap: 0.5rem;
+    }
+    .tab-btn {
+        background: transparent;
+        border: none;
+        padding: 0.75rem 1.5rem;
+        font-weight: 600;
+        color: #64748b;
+        border-bottom: 3px solid transparent;
+        transition: all 0.2s;
+        border-radius: 8px 8px 0 0;
+    }
+    .tab-btn:hover {
+        background: #e2e8f0;
+        color: #0f172a;
+    }
+    .tab-btn.active {
+        color: #4f46e5;
+        border-bottom: 3px solid #4f46e5;
+        background: white;
+    }
+
+    /* ===== RESULT PANELS ===== */
     .result-content {
-        height: 420px;
+        height: 480px;
+        padding: 1.5rem;
+        background: #ffffff;
         overflow-y: auto;
-        padding: 1rem;
     }
 
     .summary-box {
-        background: #f0fdf4;
-        border-left: 4px solid #10b981;
-        padding: 0.75rem 1rem;
-        border-radius: 6px;
-        margin-bottom: 1rem;
+        background: linear-gradient(to right, #f0fdf4, #ffffff);
+        border: 1px solid #bbf7d0;
+        border-left: 5px solid #10b981;
+        padding: 1.2rem;
+        border-radius: 10px;
+        margin-bottom: 1.5rem;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.02);
     }
-
     .summary-box strong {
         color: #059669;
-        font-size: 0.85rem;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
+        font-size: 1rem;
     }
-
     .summary-box p {
-        margin: 0.4rem 0 0;
+        margin: 0.5rem 0 0;
         color: #334155;
+        line-height: 1.6;
+    }
+    .voice-btn {
+        border-radius: 20px;
+        font-weight: 600;
+        font-size: 0.85rem;
+        padding: 0.3rem 0.8rem;
     }
 
-    /* ===== BUG ITEM ===== */
     .bug-item {
-        background: #fffbeb;
-        border-left: 4px solid #f59e0b;
-        padding: 0.75rem 1rem;
-        border-radius: 6px;
-        margin-bottom: 0.75rem;
+        background: #fff;
+        border: 1px solid #fed7aa;
+        border-left: 4px solid #f97316;
+        padding: 1rem 1.2rem;
+        border-radius: 8px;
+        margin-bottom: 1rem;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.02);
+        transition: transform 0.2s;
     }
-
+    .bug-item:hover {
+        transform: translateX(4px);
+        border-left-width: 6px;
+    }
     .bug-line {
+        background: #f97316;
+        color: white;
+        padding: 4px 10px;
+        border-radius: 6px;
+        font-size: 0.85rem;
         font-weight: 700;
-        font-size: 0.8rem;
-        color: #d97706;
-        text-transform: uppercase;
-        margin-bottom: 0.25rem;
+        white-space: nowrap;
     }
-
     .bug-desc {
         color: #451a03;
+        font-size: 1rem;
+        line-height: 1.5;
+    }
+
+    /* ===== HACKER EXPLOIT ===== */
+    .hacker-alert {
+        background: #000;
+        border: 1px solid #ff003c;
+        border-radius: 8px;
+        overflow: hidden;
+        box-shadow: 0 0 15px rgba(255, 0, 60, 0.2);
+    }
+    .hacker-header {
+        background: #ff003c;
+        color: white;
+        padding: 8px 15px;
+        font-weight: 700;
+        font-family: 'Fira Code', monospace;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+    }
+    .hacker-body {
+        padding: 15px;
+        color: #00ff41;
+        font-family: 'Fira Code', monospace;
         font-size: 0.9rem;
+    }
+    .hacker-code {
+        background: #111;
+        color: #ff003c;
+        padding: 10px;
+        border-radius: 5px;
+        border: 1px dashed #ff003c;
+        margin-top: 10px;
+        white-space: pre-wrap;
+    }
+
+    /* ===== FLOWCHART ===== */
+    .flowchart-container {
+        min-height: 350px;
+        overflow: auto;
+    }
+    
+    .flowchart-container svg {
+        max-width: 100% !important;
+        height: auto !important;
     }
 
     /* ===== EMPTY STATE ===== */
@@ -240,31 +751,371 @@
         justify-content: center;
         height: 100%;
         color: #94a3b8;
+        text-align: center;
     }
-
+    .empty-icon-wrapper {
+        width: 80px;
+        height: 80px;
+        background: #f8fafc;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-bottom: 1rem;
+        box-shadow: 0 10px 25px rgba(0,0,0,0.05);
+    }
     .empty-icon {
-        font-size: 3rem;
-        margin-bottom: 0.5rem;ow: auto;
-        border: 1px solid #ddd;
-        padding: 10px;
-        border-radius: 6px;
-        background: #f9f9f9;
+        font-size: 2.5rem;
+    }
+    .empty-state h4 {
+        color: #334155;
+        font-weight: 700;
+        margin-bottom: 0.5rem;
     }
 
+    /* ===== CHAT UI ===== */
+    .chat-panel {
+        box-shadow: 0 15px 50px -12px rgba(0,0,0,0.1);
+    }
+    .chat-container {
+        height: 380px;
+        background-color: #f8fafc;
+        background-image: radial-gradient(#e2e8f0 1px, transparent 1px);
+        background-size: 24px 24px;
+        overflow-y: auto;
+    }
+    .chat-avatar {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-size: 1.2rem;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+    }
+    .chat-bubble {
+        padding: 14px 20px;
+        border-radius: 20px;
+        font-size: 15px;
+        line-height: 1.6;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.03);
+        white-space: pre-wrap;
+    }
+    .chat-bubble-user {
+        background: linear-gradient(135deg, #4f46e5, #7c3aed);
+        color: white;
+        border-bottom-right-radius: 4px;
+    }
+    .chat-bubble-ai {
+        background: #ffffff;
+        color: #1e293b;
+        border: 1px solid #e2e8f0;
+        border-top-left-radius: 4px;
+    }
+    
+    .chat-input-area {
+        padding: 1.2rem !important;
+    }
+    .chat-input {
+        border-radius: 12px;
+        padding: 0.8rem 1.2rem;
+        border: 2px solid #e2e8f0;
+        font-size: 1rem;
+        transition: all 0.2s;
+    }
+    .chat-input:focus {
+        border-color: #7c3aed;
+        box-shadow: 0 0 0 4px rgba(124, 58, 237, 0.1);
+    }
+    .btn-send {
+        background: #1e293b;
+        color: white;
+        border: none;
+        padding: 0.8rem 1.8rem;
+        border-radius: 12px;
+        font-weight: 600;
+        transition: all 0.2s;
+    }
+    .btn-send:hover:not(:disabled) {
+        background: #0f172a;
+        transform: translateY(-2px);
+    }
+
+    /* ===== TRANSLATE BAR ===== */
+    .translate-bar .form-select {
+        background: #1e293b;
+        color: #f8fafc;
+        border: 1px solid #334155;
+    }
+    .translate-bar .form-select:focus {
+        border-color: #f59e0b;
+        box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.2);
+    }
+    .btn-translate {
+        background: linear-gradient(135deg, #f59e0b, #d97706);
+        border: none;
+        padding: 0.6rem 1.4rem;
+        border-radius: 10px;
+        color: white;
+        font-weight: 700;
+        font-size: 0.95rem;
+        white-space: nowrap;
+        box-shadow: 0 4px 12px rgba(245, 158, 11, 0.35);
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .btn-translate:hover:not(:disabled) {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 20px rgba(245, 158, 11, 0.5);
+    }
+    .btn-translate:disabled {
+        opacity: 0.65;
+        cursor: not-allowed;
+    }
+
+    /* ===== TRANSLATION RESULT ===== */
+    .translation-panel .panel-header {
+        background: linear-gradient(to right, #92400e, #b45309);
+    }
+    .translation-notes {
+        background: #fffbeb;
+        border-left: 4px solid #f59e0b;
+        padding: 0.9rem 1.2rem;
+        font-size: 0.95rem;
+        color: #78350f;
+    }
+    .translation-code {
+        height: 340px;
+        border-radius: 0 0 16px 16px;
+    }
+
+    /* ===== DIFF VIEWER ===== */
+    .diff-container {
+        height: 380px;
+        background: #1e1e2e;
+        border-radius: 8px;
+        overflow: auto;
+        padding: 0.5rem 0;
+        font-family: 'Fira Code', Consolas, monospace;
+        font-size: 13px;
+    }
+    .diff-line {
+        display: flex;
+        align-items: baseline;
+        padding: 1px 12px;
+        line-height: 1.6;
+        white-space: pre;
+    }
+    .diff-line.diff-equal { color: #cdd6f4; }
+    .diff-line.diff-insert { background: rgba(166, 227, 161, 0.15); color: #a6e3a1; }
+    .diff-line.diff-delete { background: rgba(243, 139, 168, 0.15); color: #f38ba8; }
+    .diff-prefix {
+        width: 18px;
+        flex-shrink: 0;
+        font-weight: 700;
+        user-select: none;
+        opacity: 0.7;
+    }
+    .diff-content { flex: 1; overflow-wrap: anywhere; }
+
+    /* ===== ANIMATIONS ===== */
+    .pulse-animation {
+        animation: pulse 2s infinite;
+    }
+    .pulse-animation-slow {
+        animation: pulse 3s infinite;
+    }
+    @@keyframes pulse {
+        0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+        70% { transform: scale(1.05); box-shadow: 0 0 0 6px rgba(239, 68, 68, 0); }
+        100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+    }
+
+    .typing-dot {
+        width: 8px;
+        height: 8px;
+        background: #94a3b8;
+        border-radius: 50%;
+        animation: typing 1.4s infinite ease-in-out both;
+    }
+    @@keyframes typing {
+        0%, 80%, 100% { transform: scale(0); }
+        40% { transform: scale(1); }
+    }
 </style>
 
-
 @code {
-
     string codeContent = "";
+    string selectedPersona = "Standard";
     bool isLoading = false;
     string? errorMessage;
-
     ReviewResponseDto? responseDto;
+
+    string activeTab = "Bugs";
+
+    // Chat
+    bool isChatting = false;
+    bool isStreaming = false;
+    string chatInput = "";
+    List<ChatMessage> chatHistory = new();
+    ElementReference chatContainerRef;
+
+    public class ChatMessage
+    {
+        public string Text { get; set; } = "";
+        public bool IsUser { get; set; }
+    }
+
+    bool isCopied = false;
+    bool isTestsCopied = false;
+
+    // Translation
+    string targetLanguage = "Python";
+    string translatedToLanguage = "";   // language of the current result (set on success)
+    bool isTranslating = false;
+    TranslateResponseDto? translationResult = null;
+    bool isTranslationCopied = false;
+
+    private static string GetPrismClass(string lang) => lang.ToLower() switch
+    {
+        "csharp"      => "language-csharp",
+        "typescript"  => "language-typescript",
+        "javascript"  => "language-javascript",
+        "java"        => "language-java",
+        "go"          => "language-go",
+        "rust"        => "language-rust",
+        "kotlin"      => "language-kotlin",
+        _             => "language-python"
+    };
+
+    // Diff
+    record DiffLine(string Type, string Content);
+
+    static List<DiffLine> ComputeDiff(string original, string fixedCode)
+    {
+        var origLines = (original ?? "").Split('\n');
+        var fixedLines = (fixedCode ?? "").Split('\n');
+        int m = origLines.Length, n = fixedLines.Length;
+
+        var dp = new int[m + 1, n + 1];
+        for (int i = 1; i <= m; i++)
+            for (int j = 1; j <= n; j++)
+                dp[i, j] = origLines[i - 1] == fixedLines[j - 1]
+                    ? dp[i - 1, j - 1] + 1
+                    : Math.Max(dp[i - 1, j], dp[i, j - 1]);
+
+        var diff = new List<DiffLine>();
+        int x = m, y = n;
+        while (x > 0 || y > 0)
+        {
+            if (x > 0 && y > 0 && origLines[x - 1] == fixedLines[y - 1])
+            { diff.Add(new DiffLine("equal", origLines[x - 1])); x--; y--; }
+            else if (y > 0 && (x == 0 || dp[x, y - 1] >= dp[x - 1, y]))
+            { diff.Add(new DiffLine("insert", fixedLines[y - 1])); y--; }
+            else
+            { diff.Add(new DiffLine("delete", origLines[x - 1])); x--; }
+        }
+        diff.Reverse();
+        return diff;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (responseDto != null)
+        {
+            if (activeTab is "FixedCode" or "Tests")
+                try { await JS.InvokeVoidAsync("highlightCode"); } catch { }
+            else if (activeTab == "Flowchart")
+                try { await JS.InvokeVoidAsync("renderMermaid"); } catch { }
+        }
+        if (translationResult?.TranslatedCode != null)
+            try { await JS.InvokeVoidAsync("highlightCode"); } catch { }
+    }
+
+    async Task CopyFixedCode()
+    {
+        if (responseDto != null && !string.IsNullOrEmpty(responseDto.FixedCode))
+        {
+            await JS.InvokeVoidAsync("clipboardCopy.copyText", responseDto.FixedCode);
+            isCopied = true;
+            StateHasChanged();
+            await Task.Delay(2000);
+            isCopied = false;
+            StateHasChanged();
+        }
+    }
+
+    async Task DoTranslate()
+    {
+        if (string.IsNullOrWhiteSpace(codeContent))
+        {
+            translationResult = new TranslateResponseDto { ErrorMessage = "Vui lòng nhập code trước khi dịch." };
+            return;
+        }
+
+        isTranslating = true;
+        translationResult = null;
+        translatedToLanguage = targetLanguage;
+        StateHasChanged();
+
+        try
+        {
+            var http = HttpClientFactory.CreateClient("ReviewApi");
+            var request = new TranslateRequestDto { Code = codeContent, TargetLanguage = targetLanguage };
+            var response = await http.PostAsJsonAsync("api/review/translate", request);
+
+            if (response.IsSuccessStatusCode)
+            {
+                var dto = await response.Content.ReadFromJsonAsync<TranslateResponseDto>();
+                if (dto != null && !string.IsNullOrEmpty(dto.ErrorMessage))
+                    translationResult = dto;
+                else
+                    translationResult = dto;
+            }
+            else
+            {
+                translationResult = new TranslateResponseDto { ErrorMessage = $"API lỗi: {(int)response.StatusCode} {response.StatusCode}" };
+            }
+        }
+        catch (Exception ex)
+        {
+            translationResult = new TranslateResponseDto { ErrorMessage = $"Không thể kết nối API: {ex.Message}" };
+        }
+        finally
+        {
+            isTranslating = false;
+        }
+    }
+
+    async Task CopyTranslation()
+    {
+        if (translationResult != null && !string.IsNullOrEmpty(translationResult.TranslatedCode))
+        {
+            await JS.InvokeVoidAsync("clipboardCopy.copyText", translationResult.TranslatedCode);
+            isTranslationCopied = true;
+            StateHasChanged();
+            await Task.Delay(2000);
+            isTranslationCopied = false;
+            StateHasChanged();
+        }
+    }
+
+    async Task CopyUnitTests()
+    {
+        if (responseDto != null && !string.IsNullOrEmpty(responseDto.UnitTests))
+        {
+            await JS.InvokeVoidAsync("clipboardCopy.copyText", responseDto.UnitTests);
+            isTestsCopied = true;
+            StateHasChanged();
+            await Task.Delay(2000);
+            isTestsCopied = false;
+            StateHasChanged();
+        }
+    }
 
     async Task SendToReview()
     {
-        // ✅ Validate input
         if (string.IsNullOrWhiteSpace(codeContent))
         {
             errorMessage = "Vui lòng nhập code trước khi review.";
@@ -274,22 +1125,26 @@
         isLoading = true;
         responseDto = null;
         errorMessage = null;
+        chatHistory.Clear();
+        activeTab = "Bugs";
 
         try
         {
             var http = HttpClientFactory.CreateClient("ReviewApi");
-
-            var request = new ReviewRequestDto
-            {
-                Code = codeContent
-            };
-
+            var request = new ReviewRequestDto { Code = codeContent, Persona = selectedPersona };
             var response = await http.PostAsJsonAsync("api/review", request);
 
             if (response.IsSuccessStatusCode)
             {
-                responseDto =
-                    await response.Content.ReadFromJsonAsync<ReviewResponseDto>();
+                var dto = await response.Content.ReadFromJsonAsync<ReviewResponseDto>();
+                if (dto != null && !string.IsNullOrEmpty(dto.ErrorMessage))
+                {
+                    errorMessage = dto.ErrorMessage;
+                }
+                else
+                {
+                    responseDto = dto;
+                }
             }
             else
             {
@@ -306,4 +1161,106 @@
         }
     }
 
+    async Task HandleChatKeyUp(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !isChatting && !string.IsNullOrWhiteSpace(chatInput))
+        {
+            await SendChat();
+        }
+    }
+
+    async Task SendChat()
+    {
+        if (string.IsNullOrWhiteSpace(chatInput) || isChatting) return;
+
+        var userText = chatInput.Trim();
+        chatInput = "";
+
+        chatHistory.Add(new ChatMessage { Text = userText, IsUser = true });
+
+        var aiMessage = new ChatMessage { Text = "", IsUser = false };
+        chatHistory.Add(aiMessage);
+
+        isChatting = true;
+        isStreaming = false;
+        await InvokeAsync(StateHasChanged);
+
+        try
+        {
+            var http = HttpClientFactory.CreateClient("ReviewApi");
+            var historyStr = string.Join("\n",
+                chatHistory.SkipLast(1).Select(m => (m.IsUser ? "User: " : "AI: ") + m.Text));
+
+            var requestDto = new ChatRequestDto
+            {
+                OriginalCode = codeContent ?? "",
+                ChatHistory = historyStr,
+                UserMessage = userText
+            };
+
+            bool streamSucceeded = false;
+            try
+            {
+                var req = new HttpRequestMessage(HttpMethod.Post, "api/review/chat/stream");
+                req.Content = JsonContent.Create(requestDto);
+                using var response = await http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead);
+
+                if (response.IsSuccessStatusCode)
+                {
+                    isStreaming = true;
+                    using var stream = await response.Content.ReadAsStreamAsync();
+                    using var reader = new StreamReader(stream);
+
+                    while (!reader.EndOfStream)
+                    {
+                        var line = await reader.ReadLineAsync();
+                        if (line?.StartsWith("data: ") != true) continue;
+                        var data = line.Substring(6);
+                        if (data == "[DONE]") break;
+                        try
+                        {
+                            var chunk = System.Text.Json.JsonSerializer.Deserialize<string>(data);
+                            if (chunk != null)
+                            {
+                                aiMessage.Text += chunk;
+                                streamSucceeded = true;
+                                await InvokeAsync(StateHasChanged);
+                                try { await JS.InvokeVoidAsync("scrollToBottom", chatContainerRef); } catch { }
+                            }
+                        }
+                        catch { }
+                    }
+                }
+            }
+            catch { }
+
+            if (!streamSucceeded)
+            {
+                // Fallback to regular (blocking) endpoint
+                isStreaming = false;
+                await InvokeAsync(StateHasChanged);
+                var response = await http.PostAsJsonAsync("api/review/chat", requestDto);
+                if (response.IsSuccessStatusCode)
+                {
+                    var chatResponse = await response.Content.ReadFromJsonAsync<ChatResponseDto>();
+                    aiMessage.Text = chatResponse?.Reply ?? "⚠️ Không có phản hồi";
+                }
+                else
+                {
+                    aiMessage.Text = "⚠️ Lỗi kết nối API";
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            aiMessage.Text = $"⚠️ Đã xảy ra lỗi: {ex.Message}";
+        }
+        finally
+        {
+            isChatting = false;
+            isStreaming = false;
+            await InvokeAsync(StateHasChanged);
+            try { await JS.InvokeVoidAsync("scrollToBottom", chatContainerRef); } catch { }
+        }
+    }
 }

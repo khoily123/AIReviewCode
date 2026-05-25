@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -9,6 +9,15 @@ namespace Models
     public class ReviewResponse
     {
         public string? Message { get; set; }
+        public string? FixedCode { get; set; }
+        
+        public int PerformanceScore { get; set; }
+        public int SecurityScore { get; set; }
+        public int MaintainabilityScore { get; set; }
+
+        public string? MermaidChart { get; set; }
+        public string? HackerExploit { get; set; }
+        public string? UnitTests { get; set; }
 
         public List<Bug>? Bugs { get; set; }
     }
