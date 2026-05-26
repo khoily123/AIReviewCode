@@ -42,7 +42,14 @@ namespace Repositories
 
         private bool IsRateLimit(Exception ex)
         {
-            return ex.Message.Contains("429") || ex.Message.Contains("TooManyRequests") || ex.Message.Contains("Rate limit");
+            var msg = ex.Message;
+            return msg.Contains("429") || msg.Contains("TooManyRequests") || msg.Contains("Rate limit")
+                || msg.Contains("RequestEntityTooLarge") || msg.Contains("413")
+                || msg.Contains("tokens per minute") || msg.Contains("too large")
+                || msg.Contains("Request too large") || msg.Contains("reduce your message")
+                || msg.Contains("503") || msg.Contains("ServiceUnavailable") || msg.Contains("UNAVAILABLE")
+                || msg.Contains("high demand") || msg.Contains("overloaded") || msg.Contains("502")
+                || msg.Contains("504") || msg.Contains("temporarily");
         }
 
         private async Task<string> CallGeminiAsync(string prompt)

@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Models;
 using Services;
+using System.IO.Compression;
 using System.Text.Json;
 
 namespace AIReviewerAPI.Controllers
@@ -72,5 +73,69 @@ namespace AIReviewerAPI.Controllers
                 await Response.Body.FlushAsync();
             }
         }
+
+        [HttpPost("files")]
+        [Consumes("multipart/form-data")]
+        public async Task<IActionResult> ReviewFiles(
+            [FromForm] string? persona,
+            [FromForm] string? customRules,
+            IFormFileCollection files)
+        {
+            if (files == null || files.Count == 0)
+                return BadRequest(new { message = "Vui lòng upload ít nhất một file." });
+
+            var sb = new System.Text.StringBuilder();
+            foreach (var file in files)
+            {
+                if (file.Length > 1_000_000) continue; // skip files > 1MB
+                var ext = Path.GetExtension(file.FileName).ToLower();
+
+                if (ext == ".zip")
+                {
+                    using var zipStream = file.OpenReadStream();
+                    using var zip = new ZipArchive(zipStream, ZipArchiveMode.Read);
+                    foreach (var entry in zip.Entries)
+                    {
+                        if (entry.Length > 500_000) continue;
+                        var entryExt = Path.GetExtension(entry.Name).ToLower();
+                        if (!IsCodeFile(entryExt)) continue;
+                        using var reader = new StreamReader(entry.Open());
+                        var content = await reader.ReadToEndAsync();
+                        sb.AppendLine($"// === FILE: {entry.FullName} ===");
+                        sb.AppendLine(content);
+                        sb.AppendLine();
+                    }
+                }
+                else if (IsCodeFile(ext))
+                {
+                    using var reader = new StreamReader(file.OpenReadStream());
+                    var content = await reader.ReadToEndAsync();
+                    sb.AppendLine($"// === FILE: {file.FileName} ===");
+                    sb.AppendLine(content);
+                    sb.AppendLine();
+                }
+            }
+
+            if (sb.Length == 0)
+                return BadRequest(new { message = "Không đọc được nội dung code từ các file đã upload." });
+
+            var rules = string.IsNullOrWhiteSpace(customRules)
+                ? null
+                : customRules.Split('\n', StringSplitOptions.RemoveEmptyEntries).ToList();
+
+            var request = new ReviewRequestDto
+            {
+                Code = sb.ToString(),
+                Persona = persona ?? "Standard",
+                CustomRules = rules
+            };
+
+            var result = await _aiService.ReviewCode(request);
+            return Ok(result);
+        }
+
+        private static bool IsCodeFile(string ext) =>
+            ext is ".cs" or ".py" or ".ts" or ".js" or ".java" or ".go" or ".rs" or ".kt"
+                or ".cpp" or ".c" or ".h" or ".rb" or ".php" or ".swift" or ".dart" or ".vue" or ".tsx" or ".jsx";
     }
 }

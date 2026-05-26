@@ -11,7 +11,7 @@ builder.Services.AddHttpClient("ReviewApi", (sp, client) =>
     var config = sp.GetRequiredService<IConfiguration>();
     var baseUrl = config["ApiBaseUrl"] ?? "https://localhost:7041/";
     client.BaseAddress = new Uri(baseUrl);
-    client.Timeout = TimeSpan.FromSeconds(60);
+    client.Timeout = TimeSpan.FromSeconds(180);
 });
 
 var app = builder.Build();
@@ -22,7 +22,8 @@ if (!app.Environment.IsDevelopment())
     app.UseHsts();
 }
 
-app.UseHttpsRedirection();
+if (!app.Environment.IsProduction())
+    app.UseHttpsRedirection();
 app.UseStaticFiles();
 app.UseAntiforgery();
 

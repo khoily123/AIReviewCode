@@ -2,6 +2,7 @@
 using Services;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Services.AddMemoryCache();
 
 builder.Services.AddCors(options =>
 {
@@ -16,6 +17,10 @@ builder.Services.AddHttpClient();
 
 builder.Services.AddScoped<IAIReviewRepository, AIReviewRepository>();
 builder.Services.AddScoped<IAIReviewService, AIReviewService>();
+builder.Services.AddScoped<IPdfReportService, PdfReportService>();
+builder.Services.AddScoped<IEmailService, EmailService>();
+builder.Services.AddSingleton<IVerificationService, VerificationService>();
+builder.Services.AddScoped<IShareService, ShareService>();
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
@@ -28,7 +33,8 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-app.UseHttpsRedirection();
+if (!app.Environment.IsProduction())
+    app.UseHttpsRedirection();
 
 app.UseCors("AllowBlazor");
 

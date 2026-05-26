@@ -50,20 +50,233 @@
         };
 
         window.renderMermaid = async function () {
-            if (window.mermaid) {
+            if (!window.mermaid) return;
+
+            mermaid.initialize({
+                startOnLoad: false,
+                theme: 'base',
+                securityLevel: 'loose',
+                themeVariables: {
+                    primaryColor: '#dbeafe',
+                    primaryTextColor: '#1e3a5f',
+                    primaryBorderColor: '#3b82f6',
+                    lineColor: '#64748b',
+                    secondaryColor: '#f3f4f6',
+                    tertiaryColor: '#d1fae5',
+                    background: '#ffffff',
+                    nodeBorder: '#94a3b8',
+                    clusterBkg: '#f8fafc',
+                    titleColor: '#0f172a',
+                    edgeLabelBackground: '#f8fafc',
+                    fontSize: '14px'
+                },
+                flowchart: {
+                    htmlLabels: true,
+                    curve: 'basis',
+                    padding: 20,
+                    nodeSpacing: 50,
+                    rankSpacing: 60,
+                    diagramPadding: 20,
+                    useMaxWidth: true
+                }
+            });
+
+            const elements = document.querySelectorAll('.mermaid');
+            for (const el of elements) {
+                // Read source from data-source attribute (set by Blazor)
+                const source = (el.getAttribute('data-source') || el.textContent || '').trim();
+                if (!source) continue;
+
+                // Skip if already rendered with this exact source AND SVG content still exists
+                if (el.getAttribute('data-rendered') === source && el.querySelector('svg') !== null) continue;
+
                 try {
-                    mermaid.initialize({ startOnLoad: false, theme: 'default' });
-                    await mermaid.run({
-                        querySelector: '.mermaid'
-                    });
-                } catch(e) {
-                    console.error("Mermaid parsing error", e);
+                    const uid = 'mermaid_' + Math.random().toString(36).substr(2, 9);
+                    const { svg } = await mermaid.render(uid, source);
+                    el.innerHTML = svg;
+                    el.setAttribute('data-rendered', source);
+                } catch (e) {
+                    console.warn('Mermaid render error:', e.message);
+                    el.setAttribute('data-rendered', source);
+                    el.innerHTML = `
+                        <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;padding:1rem;">
+                            <div style="color:#9a3412;font-weight:700;margin-bottom:8px;font-size:0.85rem;">
+                                ⚠️ Không thể render sơ đồ — hiển thị dạng text
+                            </div>
+                            <pre style="background:#1e293b;color:#e2e8f0;border-radius:8px;padding:1rem;font-size:0.75rem;overflow:auto;max-height:300px;white-space:pre-wrap;margin:0;">${source.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</pre>
+                        </div>`;
                 }
             }
         };
 
+        window.downloadMermaidSVG = function () {
+            const svg = document.querySelector('#mermaid-diagram svg');
+            if (!svg) { alert('Chưa có sơ đồ để tải!'); return; }
+            const serializer = new XMLSerializer();
+            const svgStr = serializer.serializeToString(svg);
+            const blob = new Blob([svgStr], { type: 'image/svg+xml;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url; a.download = 'flowchart.svg'; a.click();
+            URL.revokeObjectURL(url);
+        };
+
+        window.downloadMermaidPNG = function () {
+            const svg = document.querySelector('#mermaid-diagram svg');
+            if (!svg) { alert('Chưa có sơ đồ để tải!'); return; }
+            const scale = 2;
+            const box = svg.getBoundingClientRect();
+            const w = box.width  || 800;
+            const h = box.height || 600;
+            const clone = svg.cloneNode(true);
+            clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+            clone.setAttribute('width',  w);
+            clone.setAttribute('height', h);
+            // Use base64 data URL — more reliable than blob URL for canvas taint
+            const svgStr = new XMLSerializer().serializeToString(clone);
+            const dataUrl = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgStr)));
+            const img = new Image();
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                canvas.width  = w * scale;
+                canvas.height = h * scale;
+                const ctx = canvas.getContext('2d');
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.scale(scale, scale);
+                ctx.drawImage(img, 0, 0, w, h);
+                const a = document.createElement('a');
+                a.href = canvas.toDataURL('image/png');
+                a.download = 'flowchart.png';
+                a.click();
+            };
+            img.onerror = () => alert('Không thể xuất PNG.');
+            img.src = dataUrl;
+        };
+
+        window.fitFlowchartToScreen = function (areaId) {
+            const area = document.getElementById(areaId);
+            const svg  = document.querySelector('#mermaid-diagram svg');
+            if (!area || !svg) return 0;
+            // Get natural SVG size (unscaled)
+            const svgW = svg.scrollWidth;
+            const svgH = svg.scrollHeight;
+            if (!svgW || !svgH) return 0;
+            const areaW = area.clientWidth  - 64;
+            const areaH = area.clientHeight - 64;
+            const scale = Math.min(areaW / svgW, areaH / svgH, 2.0);
+            return Math.max(Math.round(scale * 100 / 20) * 20, 40); // snap to nearest 20
+        };
+
+        window.centerFlowchart = function (id) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.scrollLeft = (el.scrollWidth  - el.clientWidth)  / 2;
+            el.scrollTop  = (el.scrollHeight - el.clientHeight) / 2;
+        };
+
         window.scrollToBottom = function (element) {
             if (element) element.scrollTop = element.scrollHeight;
+        };
+
+        window._ttsAudio = null;
+
+        window.speakText = function (text) {
+            const ssPlaying = window.speechSynthesis && window.speechSynthesis.speaking;
+            const auPlaying = window._ttsAudio && !window._ttsAudio.paused;
+            if (ssPlaying || auPlaying) {
+                if (window.speechSynthesis) window.speechSynthesis.cancel();
+                if (window._ttsAudio) { window._ttsAudio.pause(); window._ttsAudio = null; }
+                return;
+            }
+
+            // Thử Web Speech API với giọng tiếng Việt native
+            if (window.speechSynthesis) {
+                const tryViNative = () => {
+                    const voices = window.speechSynthesis.getVoices();
+                    const viVoice = voices.find(v => v.lang && v.lang.startsWith('vi'));
+                    if (viVoice) {
+                        const utt = new SpeechSynthesisUtterance(text);
+                        utt.voice = viVoice; utt.lang = 'vi-VN'; utt.rate = 0.95;
+                        window.speechSynthesis.speak(utt);
+                        return true;
+                    }
+                    return false;
+                };
+                if (tryViNative()) return;
+                let done = false;
+                window.speechSynthesis.addEventListener('voiceschanged', function once() {
+                    window.speechSynthesis.removeEventListener('voiceschanged', once);
+                    if (!done) { done = true; if (!tryViNative()) playGoogleTTS(text); }
+                });
+                setTimeout(() => { if (!done) { done = true; if (!tryViNative()) playGoogleTTS(text); } }, 400);
+                return;
+            }
+
+            playGoogleTTS(text);
+        };
+
+        function playGoogleTTS(text) {
+            const chunks = [];
+            const parts = text.match(/[^.!?\n]+[.!?\n]?/g) || [text];
+            let buf = '';
+            for (const p of parts) {
+                if ((buf + p).length > 180) { if (buf.trim()) chunks.push(buf.trim()); buf = p; }
+                else buf += p;
+            }
+            if (buf.trim()) chunks.push(buf.trim());
+
+            window._ttsAudio = new Audio();
+            let idx = 0;
+            const playNext = () => {
+                if (!window._ttsAudio || idx >= chunks.length) { window._ttsAudio = null; return; }
+                window._ttsAudio.src = 'https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=vi&q='
+                    + encodeURIComponent(chunks[idx++]);
+                window._ttsAudio.onended = playNext;
+                window._ttsAudio.onerror = () => { window._ttsAudio = null; };
+                window._ttsAudio.play().catch(() => { window._ttsAudio = null; });
+            };
+            playNext();
+        }
+
+        window.stopSpeak = function () {
+            if (window.speechSynthesis) window.speechSynthesis.cancel();
+            if (window._ttsAudio) { window._ttsAudio.pause(); window._ttsAudio = null; }
+        };
+
+
+        window.setupFlowchartPan = function (id) {
+            const el = document.getElementById(id);
+            if (!el || el._panSetup) return;
+            el._panSetup = true;
+
+            let isDown = false, startX, startY, scrollLeft, scrollTop;
+
+            el.addEventListener('mousedown', (e) => {
+                if (!el.classList.contains('pan-active') || e.button !== 0) return;
+                isDown = true;
+                startX = e.clientX;
+                startY = e.clientY;
+                scrollLeft = el.scrollLeft;
+                scrollTop = el.scrollTop;
+                e.preventDefault();
+            });
+
+            document.addEventListener('mouseup', () => { isDown = false; });
+
+            el.addEventListener('mousemove', (e) => {
+                if (!isDown || !el.classList.contains('pan-active')) return;
+                e.preventDefault();
+                el.scrollLeft = scrollLeft - (e.clientX - startX);
+                el.scrollTop  = scrollTop  - (e.clientY - startY);
+            });
+
+            // Ctrl + scroll wheel to zoom — dispatches Blazor-friendly custom events
+            el.addEventListener('wheel', (e) => {
+                if (!e.ctrlKey) return;
+                e.preventDefault();
+                el.dispatchEvent(new CustomEvent('flowchart-wheel', { detail: e.deltaY < 0 ? 'in' : 'out', bubbles: true }));
+            }, { passive: false });
         };
 
     </script>

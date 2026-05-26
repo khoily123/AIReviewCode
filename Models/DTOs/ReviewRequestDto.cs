@@ -8,5 +8,7 @@ namespace AIReviewerAPI.DTOs
         public string Code { get; set; } = string.Empty;
 
         public string Persona { get; set; } = "Standard";
+
+        public List<string>? CustomRules { get; set; }
     }
 }

@@ -12,6 +12,11 @@ services:
       - OpenAI__ApiKey=${GEMINI_API_KEY}
       - Groq__ApiKey=${GROQ_API_KEY}
       - Together__ApiKey=${TOGETHER_API_KEY}
+      - Smtp__Host=${Smtp__Host}
+      - Smtp__Port=${Smtp__Port}
+      - Smtp__User=${Smtp__User}
+      - Smtp__Password=${Smtp__Password}
+      - Smtp__FromName=${Smtp__FromName}
 
   code-reviewer:
     build:
@@ -24,4 +29,9 @@ services:
       - ASPNETCORE_ENVIRONMENT=Development
       - ASPNETCORE_URLS=http://+:8090
       - ApiBaseUrl=http://ai-reviewer-api:8080/
+    volumes:
+      - dp_keys:/root/.aspnet/DataProtection-Keys
+
+volumes:
+  dp_keys:
 
