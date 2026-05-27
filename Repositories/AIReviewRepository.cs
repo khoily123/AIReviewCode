@@ -26,6 +26,7 @@ namespace Repositories
 
         public async Task<string> CallAI(string prompt)
         {
+            Exception? lastEx = null;
             try
             {
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(GeminiTimeoutSeconds));
@@ -33,6 +34,7 @@ namespace Repositories
             }
             catch (Exception ex) when (ShouldFallback(ex))
             {
+                lastEx = ex;
                 try
                 {
                     using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(FallbackTimeoutSeconds));
@@ -40,10 +42,19 @@ namespace Repositories
                 }
                 catch (Exception ex2) when (ShouldFallback(ex2))
                 {
-                    using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(FallbackTimeoutSeconds));
-                    return await CallTogetherAsync(prompt, cts.Token);
+                    lastEx = ex2;
+                    try
+                    {
+                        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(FallbackTimeoutSeconds));
+                        return await CallTogetherAsync(prompt, cts.Token);
+                    }
+                    catch (Exception ex3)
+                    {
+                        lastEx = ex3;
+                    }
                 }
             }
+            throw new InvalidOperationException("Tất cả AI provider hiện không khả dụng. Vui lòng thử lại sau vài phút.");
         }
 
         private bool ShouldFallback(Exception ex)
@@ -56,7 +67,9 @@ namespace Repositories
                 || msg.Contains("Request too large") || msg.Contains("reduce your message")
                 || msg.Contains("503") || msg.Contains("ServiceUnavailable") || msg.Contains("UNAVAILABLE")
                 || msg.Contains("high demand") || msg.Contains("overloaded") || msg.Contains("502")
-                || msg.Contains("504") || msg.Contains("temporarily");
+                || msg.Contains("504") || msg.Contains("temporarily")
+                || msg.Contains("402") || msg.Contains("PaymentRequired") || msg.Contains("credit_limit")
+                || msg.Contains("Credit limit") || msg.Contains("Unauthorized") || msg.Contains("401");
         }
 
         // Keep old name as alias so CallAIText can reuse
@@ -135,8 +148,15 @@ namespace Repositories
                 }
                 catch (Exception ex2) when (ShouldFallback(ex2))
                 {
-                    using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(FallbackTimeoutSeconds));
-                    return await CallTogetherAsync(prompt, cts.Token);
+                    try
+                    {
+                        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(FallbackTimeoutSeconds));
+                        return await CallTogetherAsync(prompt, cts.Token);
+                    }
+                    catch
+                    {
+                        return "";
+                    }
                 }
             }
         }

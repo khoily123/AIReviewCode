@@ -412,6 +412,7 @@ RULES:
 - Node IDs: ASCII letters/digits/underscore only (NO Vietnamese, NO spaces in IDs)
 - Labels with special chars or spaces MUST be quoted: A[""GetUser(id)""]
 - Decision diamonds: A{{""Is valid?""}}
+- NEVER mix bracket types: rectangle nodes use [""label""] with square brackets on BOTH sides; diamond decisions use {{""label""}} with curly braces on BOTH sides. One open-square with close-curly is invalid.
 - Terminals: START([""▶ Start""]) endNode([""⏹ End""]) — NEVER use 'end' as a node ID (reserved keyword)
 - Edge labels quoted: -->|""yes""| -->|""no""| -->|""error""|
 - MINIMUM 15 nodes
@@ -438,6 +439,7 @@ STRICT RULES:
 - Node IDs: ASCII letters/digits/underscore ONLY — no spaces, no Vietnamese, no special chars
 - Labels with special chars or spaces MUST be quoted: A[""ReviewCode(request)""]
 - Decision diamonds with quoted label: check{{""Input null?""}}
+- NEVER mix bracket types: rectangle nodes use [""label""] with square brackets on BOTH sides; diamond decisions use {{""label""}} with curly braces on BOTH sides. One open-square with close-curly is invalid.
 - Terminals: START([""▶ Start""]) endNode([""⏹ End""]) — NEVER use 'end' as a node ID (reserved keyword)
 - ALL edge labels with spaces quoted: -->|""on error""|
 - Use one subgraph per class/major method group. CORRECT subgraph syntax:
@@ -452,28 +454,26 @@ STRICT RULES:
 - Apply styles at end of chart:
 {FlowchartStyleDefs}
 
-Example pattern (follow this structure):
+Syntax reference (do NOT copy these node names into your output — analyze ONLY the code below):
 flowchart TD
     START([""▶ Start""])
-    START --> validateInput{{""Input empty?""}}
-    validateInput -->|""yes""| throwArg[""Throw ArgumentException""]
-    validateInput -->|""no""| callGemini[""CallGeminiAsync(prompt)""]
-    callGemini --> geminiOk{{""Success?""}}
-    geminiOk -->|""yes""| parseJson[""JsonDocument.Parse""]
-    geminiOk -->|""no""| fallbackGroq[""CallGroqAsync(prompt)""]
-    parseJson --> extractText[""Extract .text field""]
-    fallbackGroq --> groqOk{{""Groq ok?""}}
-    groqOk -->|""yes""| parseJson
-    groqOk -->|""no""| throwFinal[""Throw last exception""]
-    extractText --> END([""⏹ End""])
-    throwArg --> END
-    throwFinal --> END
+    START --> checkA{{""Condition A?""}}
+    checkA -->|""yes""| doStep1[""Step 1""]
+    checkA -->|""no""| doStep2[""Step 2""]
+    doStep1 --> checkB{{""Condition B?""}}
+    checkB -->|""success""| doStep3[""Step 3""]
+    checkB -->|""error""| throwErr[""Throw Exception""]
+    doStep2 --> doStep3
+    doStep3 --> END([""⏹ End""])
+    throwErr --> END
     classDef decisionStyle fill:#dbeafe,stroke:#3b82f6,color:#1e3a5f
     classDef errorStyle fill:#fee2e2,stroke:#ef4444,color:#7f1d1d
     classDef startEnd fill:#1e293b,stroke:#475569,color:#f8fafc
-    class validateInput geminiOk fallbackGroq groqOk decisionStyle
-    class throwArg throwFinal fallbackGroq errorStyle
-    class START END startEnd
+    class checkA,checkB decisionStyle
+    class throwErr errorStyle
+    class START,END startEnd
+
+IMPORTANT: The nodes above (checkA, doStep1, etc.) are syntax examples ONLY. Your output must contain ONLY nodes that represent code from the file below. Do not include any node from the example above.
 
 Code to analyze:
 {code}";
@@ -541,6 +541,15 @@ Code to analyze:
                 while (depth2-- > 0) lines2.Add("end");
                 raw = string.Join('\n', lines2);
             }
+
+            // Step 0c: Fix mismatched bracket/brace closers in node labels.
+            // AI sometimes writes: nodeId["label"} or nodeId{"label"]
+            // ["label"} → ["label"]   {"label"] → {"label"}
+            raw = System.Text.RegularExpressions.Regex.Replace(raw, @"\[""([^""]*)""\}", "[\"$1\"]");
+            raw = System.Text.RegularExpressions.Regex.Replace(raw, @"\{""([^""]*)""\]", "{\"$1\"}");
+            // Also handle unquoted label variants: [label} → [label]  {label] → {label}
+            raw = System.Text.RegularExpressions.Regex.Replace(raw, @"\[([^\[\]{}""\n]+)\}", "[$1]");
+            raw = System.Text.RegularExpressions.Regex.Replace(raw, @"\{([^\[\]{}""\n]+)\]", "{$1}");
 
             // Step 1: Replace non-ASCII chars in node IDs (outside label brackets / quotes)
             // Labels are inside [..], {..}, (..) or ".."; node IDs are outside these

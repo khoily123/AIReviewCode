@@ -12,7 +12,7 @@
 <div class="reviewer-wrapper">
     <div class="reviewer-container">
 
-        <div class="text-center mb-5 mt-3">
+        <div class="text-center mb-4 mt-2">
             <div class="badge-premium mb-3">✨ AI-Powered Code Assistant</div>
             <h2 class="hero-title">Paste your code & get instant AI review</h2>
             <p class="text-muted fs-5">Powered by Gemini AI — Find bugs, improve quality, and chat with your code.</p>
@@ -21,8 +21,8 @@
         <div class="row g-4">
             <!-- CODE INPUT -->
             <div class="col-lg-6 d-flex flex-column">
-                <div class="panel flex-grow-1">
-                    <div class="panel-header">
+                <div class="panel flex-grow-1 d-flex flex-column">
+                    <div class="panel-header" style="flex-shrink:0;">
                         <div class="d-flex align-items-center gap-2">
                             <i class="bi bi-code-slash text-info"></i>
                             <span>Code Input</span>
@@ -32,12 +32,12 @@
                             var totalKb = uploadedFiles.Sum(f => f.Size) / 1024;
                             <span class="badge bg-primary opacity-75 rounded-pill">@uploadedFiles.Count file (@totalKb KB)</span>
                         }
-                        else
+                        else if ((codeContent?.Length ?? 0) > 0)
                         {
-                            <span class="badge bg-secondary opacity-75 rounded-pill">@(codeContent?.Length ?? 0) chars</span>
+                            <span class="badge bg-secondary opacity-75 rounded-pill">@codeContent!.Length chars</span>
                         }
                     </div>
-                    <div class="p-3 pb-0 bg-white border-bottom">
+                    <div class="p-3 pb-0 bg-white border-bottom" style="flex-shrink:0;">
                         <div class="d-flex align-items-center gap-3 mb-2">
                             <label class="fw-bold text-muted" style="font-size: 0.9rem;">
                                 <i class="bi bi-person-badge-fill text-primary"></i> Persona:
@@ -78,14 +78,22 @@
                                 @if (uploadedFiles.Count > 0)
                                 {
                                     <div class="file-list mt-2">
-                                        @foreach (var f in uploadedFiles)
+                                        @foreach (var f in uploadedFiles.ToList())
                                         {
+                                            var file = f;
                                             <div class="file-chip">
-                                                <i class="bi bi-file-earmark-code me-1"></i> @f.Name
-                                                <span class="text-muted ms-1">(@(f.Size / 1024)KB)</span>
+                                                <i class="bi bi-file-earmark-code me-1"></i> @file.Name
+                                                <span class="text-muted ms-1">(@(file.Size / 1024)KB)</span>
+                                                <button type="button" class="file-chip-remove" @onclick:stopPropagation="true"
+                                                        @onclick="() => uploadedFiles.Remove(file)" title="Xóa file">
+                                                    <i class="bi bi-x"></i>
+                                                </button>
                                             </div>
                                         }
                                     </div>
+                                    <label for="fileInput" class="btn btn-outline-primary btn-sm mt-2" style="cursor:pointer;">
+                                        <i class="bi bi-plus-lg me-1"></i> Thêm file
+                                    </label>
                                 }
                                 else
                                 {
@@ -96,109 +104,35 @@
                     }
                     else if (inputMode == "github")
                     {
-                        <div class="p-4">
+                        <div class="p-4" style="flex:1;overflow-y:auto;background:#0f172a;">
                             <div class="mb-3">
-                                <label class="form-label fw-bold">
+                                <label class="form-label fw-bold" style="color:#94a3b8;">
                                     <i class="bi bi-github me-1"></i> GitHub URL
                                 </label>
                                 <input type="url" class="form-control" @bind="githubPrUrl"
                                        placeholder="https://github.com/owner/repo  hoặc  /pull/123"
-                                       style="border-radius: 10px; font-family: monospace;" />
-                                <div class="form-text mt-1">
-                                    <span class="badge bg-secondary me-1">PR</span> <code>github.com/owner/repo/pull/123</code><br/>
-                                    <span class="badge bg-secondary me-1">File</span> <code>github.com/owner/repo/blob/main/src/File.cs</code><br/>
-                                    <span class="badge bg-secondary me-1">Compare</span> <code>github.com/owner/repo/compare/main...feature</code><br/>
-                                    <span class="badge bg-secondary me-1">Repo</span> <code>github.com/owner/repo</code> — review latest commit
+                                       style="border-radius:10px;font-family:monospace;background:#1e293b;border-color:#334155;color:#e2e8f0;" />
+                                <div class="mt-2" style="font-size:0.8rem;color:#64748b;">
+                                    <span class="badge bg-secondary me-1">PR</span> <code style="color:#7dd3fc;">github.com/owner/repo/pull/123</code><br/>
+                                    <span class="badge bg-secondary me-1 mt-1">File</span> <code style="color:#7dd3fc;">github.com/owner/repo/blob/main/src/File.cs</code><br/>
+                                    <span class="badge bg-secondary me-1 mt-1">Compare</span> <code style="color:#7dd3fc;">github.com/owner/repo/compare/main...feature</code><br/>
+                                    <span class="badge bg-secondary me-1 mt-1">Repo</span> <code style="color:#7dd3fc;">github.com/owner/repo</code>
                                 </div>
                             </div>
                             <div>
-                                <label class="form-label fw-bold">
-                                    <i class="bi bi-key me-1"></i> GitHub Token <span class="text-muted fw-normal">(tùy chọn — cần cho private repo)</span>
+                                <label class="form-label fw-bold" style="color:#94a3b8;">
+                                    <i class="bi bi-key me-1"></i> GitHub Token <span style="font-weight:400;color:#64748b;">(tùy chọn — private repo)</span>
                                 </label>
                                 <input type="password" class="form-control" @bind="githubToken"
                                        placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"
-                                       style="border-radius: 10px; font-family: monospace;" />
-                                <div class="form-text">
+                                       style="border-radius:10px;font-family:monospace;background:#1e293b;border-color:#334155;color:#e2e8f0;" />
+                                <div class="mt-1" style="font-size:0.78rem;color:#64748b;">
                                     <i class="bi bi-info-circle me-1"></i>
-                                    Tạo token tại GitHub Settings → Developer settings → Personal access tokens
+                                    GitHub Settings → Developer settings → Personal access tokens
                                 </div>
                             </div>
                         </div>
                     }
-                </div>
-
-                <!-- Custom Rules -->
-                <div class="mt-3 flex-shrink-0">
-                    <button class="btn btn-outline-secondary btn-sm w-100 d-flex justify-content-between align-items-center"
-                            style="border-radius:10px; font-weight:600;"
-                            @onclick="ToggleCustomRules">
-                        <span><i class="bi bi-sliders me-1"></i> Custom Rules (@customRules.Count)</span>
-                        <i class="bi @(showCustomRules ? "bi-chevron-up" : "bi-chevron-down")"></i>
-                    </button>
-                    @if (showCustomRules)
-                    {
-                        <div class="custom-rules-panel mt-2">
-                            @foreach (var (rule, i) in customRules.Select((r, i) => (r, i)))
-                            {
-                                <div class="d-flex gap-2 mb-1">
-                                    <input type="text" class="form-control form-control-sm"
-                                           value="@rule"
-                                           @onchange="e => customRules[i] = e.Value?.ToString() ?? string.Empty"
-                                           style="border-radius:8px;" />
-                                    <button class="btn btn-outline-danger btn-sm" @onclick="() => customRules.RemoveAt(i)">
-                                        <i class="bi bi-x"></i>
-                                    </button>
-                                </div>
-                            }
-                            <div class="d-flex gap-2 mt-2">
-                                <input type="text" class="form-control form-control-sm" @bind="newCustomRule"
-                                       placeholder="VD: Không dùng magic numbers" style="border-radius:8px;" />
-                                <button class="btn btn-outline-primary btn-sm fw-bold" @onclick="AddCustomRule"
-                                        disabled="@string.IsNullOrWhiteSpace(newCustomRule)">
-                                    <i class="bi bi-plus-lg"></i>
-                                </button>
-                            </div>
-                        </div>
-                    }
-                </div>
-
-                <button class="btn-review mt-3 flex-shrink-0"
-                        @onclick="SendToReview"
-                        disabled="@isLoading">
-                    @if (isLoading)
-                    {
-                        <span class="spinner-border spinner-border-sm me-2"></span>
-                        <span>Đang phân tích hệ thống...</span>
-                    }
-                    else
-                    {
-                        <span><i class="bi bi-rocket-takeoff me-2"></i> Review Code</span>
-                    }
-                </button>
-
-                <div class="translate-bar mt-3 d-flex gap-2 flex-shrink-0">
-                    <select class="form-select shadow-sm" @bind="targetLanguage" style="border-radius: 10px; font-weight: 500; font-size: 0.95rem;"
-                            disabled="@(isLoading || isTranslating || responseDto == null)">
-                        <option value="CSharp">💜 C#</option>
-                        <option value="Python">🐍 Python</option>
-                        <option value="TypeScript">📘 TypeScript</option>
-                        <option value="JavaScript">💛 JavaScript</option>
-                        <option value="Java">☕ Java</option>
-                        <option value="Go">🔵 Go</option>
-                        <option value="Rust">🦀 Rust</option>
-                        <option value="Kotlin">🟣 Kotlin</option>
-                    </select>
-                    <button class="btn-translate flex-shrink-0" @onclick="DoTranslate" disabled="@(isLoading || isTranslating || responseDto == null)">
-                        @if (isTranslating)
-                        {
-                            <span class="spinner-border spinner-border-sm me-1"></span>
-                        }
-                        else
-                        {
-                            <i class="bi bi-translate me-1"></i>
-                        }
-                        Dịch
-                    </button>
                 </div>
             </div>
 
@@ -258,9 +192,9 @@
                                     @onclick="@(() => activeTab = "Bugs")">
                                 <i class="bi bi-bug me-1"></i> Phân tích
                             </button>
-                            <button class="tab-btn @(activeTab == "Flowchart" ? "active" : "")" 
+                            <button class="tab-btn @(activeTab == "Flowchart" ? "active" : "")"
                                     @onclick="@(() => activeTab = "Flowchart")">
-                                <i class="bi bi-diagram-3 me-1"></i> Sơ đồ thuật toán
+                                <i class="bi bi-diagram-3 me-1"></i> Flowchart
                             </button>
                             <button class="tab-btn @(activeTab == "FixedCode" ? "active" : "")"
                                     @onclick="@(() => activeTab = "FixedCode")">
@@ -289,32 +223,29 @@
                         {
                             @if (activeTab == "Bugs")
                             {
-                                <div class="scores-container d-flex flex-wrap gap-4 mb-4 mt-1">
-                                    <div class="score-item flex-grow-1">
-                                        <div class="d-flex justify-content-between text-muted mb-1" style="font-size: 0.85rem;">
-                                            <span class="fw-bold"><i class="bi bi-lightning-charge-fill text-warning"></i> Hiệu suất</span>
-                                            <span class="fw-bold text-dark">@responseDto.PerformanceScore/100</span>
-                                        </div>
-                                        <div class="progress" style="height: 10px; border-radius: 10px; background: #f1f5f9;">
-                                            <div class="progress-bar bg-warning" role="progressbar" style="width: @(responseDto.PerformanceScore)%; transition: width 1.5s cubic-bezier(0.4, 0, 0.2, 1);"></div>
-                                        </div>
-                                    </div>
-                                    <div class="score-item flex-grow-1">
-                                        <div class="d-flex justify-content-between text-muted mb-1" style="font-size: 0.85rem;">
-                                            <span class="fw-bold"><i class="bi bi-shield-lock-fill text-danger"></i> Bảo mật</span>
-                                            <span class="fw-bold text-dark">@responseDto.SecurityScore/100</span>
-                                        </div>
-                                        <div class="progress" style="height: 10px; border-radius: 10px; background: #f1f5f9;">
-                                            <div class="progress-bar bg-danger" role="progressbar" style="width: @(responseDto.SecurityScore)%; transition: width 1.5s cubic-bezier(0.4, 0, 0.2, 1); background-image: linear-gradient(45deg,rgba(255,255,255,.15) 25%,transparent 25%,transparent 50%,rgba(255,255,255,.15) 50%,rgba(255,255,255,.15) 75%,transparent 75%,transparent);"></div>
+                                <div class="scores-row mb-4 mt-1">
+                                    <div class="score-card score-perf">
+                                        <div class="score-icon"><i class="bi bi-lightning-charge-fill"></i></div>
+                                        <div class="score-body">
+                                            <div class="score-label">Hiệu suất</div>
+                                            <div class="score-value">@responseDto.PerformanceScore<span class="score-max">/100</span></div>
+                                            <div class="score-bar"><div class="score-fill" style="width:@(responseDto.PerformanceScore)%"></div></div>
                                         </div>
                                     </div>
-                                    <div class="score-item flex-grow-1">
-                                        <div class="d-flex justify-content-between text-muted mb-1" style="font-size: 0.85rem;">
-                                            <span class="fw-bold"><i class="bi bi-code-square text-success"></i> Khả năng bảo trì</span>
-                                            <span class="fw-bold text-dark">@responseDto.MaintainabilityScore/100</span>
+                                    <div class="score-card score-sec">
+                                        <div class="score-icon"><i class="bi bi-shield-lock-fill"></i></div>
+                                        <div class="score-body">
+                                            <div class="score-label">Bảo mật</div>
+                                            <div class="score-value">@responseDto.SecurityScore<span class="score-max">/100</span></div>
+                                            <div class="score-bar"><div class="score-fill" style="width:@(responseDto.SecurityScore)%"></div></div>
                                         </div>
-                                        <div class="progress" style="height: 10px; border-radius: 10px; background: #f1f5f9;">
-                                            <div class="progress-bar bg-success" role="progressbar" style="width: @(responseDto.MaintainabilityScore)%; transition: width 1.5s cubic-bezier(0.4, 0, 0.2, 1);"></div>
+                                    </div>
+                                    <div class="score-card score-maint">
+                                        <div class="score-icon"><i class="bi bi-code-square"></i></div>
+                                        <div class="score-body">
+                                            <div class="score-label">Bảo trì</div>
+                                            <div class="score-value">@responseDto.MaintainabilityScore<span class="score-max">/100</span></div>
+                                            <div class="score-bar"><div class="score-fill" style="width:@(responseDto.MaintainabilityScore)%"></div></div>
                                         </div>
                                     </div>
                                 </div>
@@ -472,7 +403,7 @@
                                         }
                                         <div class="flowchart-scroll-area custom-scrollbar @(isPanMode ? "pan-active" : "")" id="flowchart-scroll-area"
                                              style="@(isFlowchartFullscreen && isDarkBg ? "background:#1e293b;" : "")"  >
-                                            <div class="flowchart-scale-wrapper" style="transform: scale(@(flowchartZoom / 100.0)); transform-origin: top center;">
+                                            <div class="flowchart-scale-wrapper" style="transform: scale(@(flowchartZoom / 100.0)); transform-origin: top left;">
                                                 @{
                                                     var rawChart = responseDto.MermaidChart ?? "";
                                                     if (rawChart.Contains("```mermaid"))
@@ -612,6 +543,23 @@
                                 }
                             }
                         }
+                        else if (isLoading)
+                        {
+                            <div class="loading-skeleton p-4">
+                                <div class="skeleton-line w-50 mb-4"></div>
+                                <div class="d-flex gap-3 mb-4">
+                                    <div class="skeleton-card flex-grow-1"></div>
+                                    <div class="skeleton-card flex-grow-1"></div>
+                                    <div class="skeleton-card flex-grow-1"></div>
+                                </div>
+                                <div class="skeleton-line w-100 mb-2"></div>
+                                <div class="skeleton-line w-75 mb-2"></div>
+                                <div class="skeleton-line w-90 mb-4"></div>
+                                <div class="skeleton-block mb-3"></div>
+                                <div class="skeleton-block mb-3"></div>
+                                <div class="skeleton-block"></div>
+                            </div>
+                        }
                         else
                         {
                             <div class="empty-state">
@@ -619,11 +567,92 @@
                                     <span class="empty-icon">✨</span>
                                 </div>
                                 <h4>Chưa có dữ liệu</h4>
-                                <p>Hãy dán code vào khung bên trái và bấm <strong>Review Code</strong> để bắt đầu!</p>
+                                <p>Nhập code và bấm <strong>Review Code</strong> bên dưới để bắt đầu!</p>
                             </div>
                         }
                     </div>
                 </div>
+            </div>
+        </div>
+
+        <!-- ACTION BAR -->
+        <div class="row mt-3">
+            <div class="col-lg-6">
+            <div class="action-card d-flex flex-column gap-3">
+                <!-- Custom Rules -->
+                <div>
+                    <button class="btn btn-outline-secondary btn-sm w-100 d-flex justify-content-between align-items-center"
+                            style="border-radius:10px; font-weight:600;"
+                            @onclick="ToggleCustomRules">
+                        <span><i class="bi bi-sliders me-1"></i> Custom Rules (@customRules.Count)</span>
+                        <i class="bi @(showCustomRules ? "bi-chevron-up" : "bi-chevron-down")"></i>
+                    </button>
+                    @if (showCustomRules)
+                    {
+                        <div class="custom-rules-panel mt-2">
+                            @foreach (var (rule, i) in customRules.Select((r, i) => (r, i)))
+                            {
+                                <div class="d-flex gap-2 mb-1">
+                                    <input type="text" class="form-control form-control-sm"
+                                           value="@rule"
+                                           @onchange="e => customRules[i] = e.Value?.ToString() ?? string.Empty"
+                                           style="border-radius:8px;" />
+                                    <button class="btn btn-outline-danger btn-sm" @onclick="() => customRules.RemoveAt(i)">
+                                        <i class="bi bi-x"></i>
+                                    </button>
+                                </div>
+                            }
+                            <div class="d-flex gap-2 mt-2">
+                                <input type="text" class="form-control form-control-sm" @bind="newCustomRule"
+                                       placeholder="VD: Không dùng magic numbers" style="border-radius:8px;" />
+                                <button class="btn btn-outline-primary btn-sm fw-bold" @onclick="AddCustomRule"
+                                        disabled="@string.IsNullOrWhiteSpace(newCustomRule)">
+                                    <i class="bi bi-plus-lg"></i>
+                                </button>
+                            </div>
+                        </div>
+                    }
+                </div>
+
+                <button class="btn-review"
+                        @onclick="SendToReview"
+                        disabled="@isLoading">
+                    @if (isLoading)
+                    {
+                        <span class="spinner-border spinner-border-sm me-2"></span>
+                        <span>Đang phân tích hệ thống...</span>
+                    }
+                    else
+                    {
+                        <span><i class="bi bi-rocket-takeoff me-2"></i> Review Code</span>
+                    }
+                </button>
+
+                <div class="translate-bar d-flex gap-2">
+                    <select class="form-select shadow-sm" @bind="targetLanguage" style="border-radius: 10px; font-weight: 500; font-size: 0.95rem;"
+                            disabled="@(isLoading || isTranslating || responseDto == null)">
+                        <option value="CSharp">💜 C#</option>
+                        <option value="Python">🐍 Python</option>
+                        <option value="TypeScript">📘 TypeScript</option>
+                        <option value="JavaScript">💛 JavaScript</option>
+                        <option value="Java">☕ Java</option>
+                        <option value="Go">🔵 Go</option>
+                        <option value="Rust">🦀 Rust</option>
+                        <option value="Kotlin">🟣 Kotlin</option>
+                    </select>
+                    <button class="btn-translate flex-shrink-0" @onclick="DoTranslate" disabled="@(isLoading || isTranslating || responseDto == null)">
+                        @if (isTranslating)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1"></span>
+                        }
+                        else
+                        {
+                            <i class="bi bi-translate me-1"></i>
+                        }
+                        Dịch
+                    </button>
+                </div>
+            </div>
             </div>
         </div>
 
@@ -1067,7 +1096,8 @@
     /* ===== CODE EDITOR ===== */
     .code-editor {
         width: 100%;
-        height: 480px;
+        flex: 1 1 auto;
+        min-height: 380px;
         border: none;
         outline: none;
         padding: 1.5rem;
@@ -1087,7 +1117,8 @@
     }
     
     .code-preview-container {
-        height: 380px;
+        min-height: 280px;
+        max-height: 500px;
         background: #2d2d2d;
         border-radius: 8px;
         overflow: auto;
@@ -1180,7 +1211,8 @@
 
     /* ===== RESULT PANELS ===== */
     .result-content {
-        height: 480px;
+        flex: 1 1 auto;
+        min-height: 380px;
         padding: 1.5rem;
         background: #ffffff;
         overflow-y: auto;
@@ -1882,7 +1914,8 @@
 
     /* ===== FILE UPLOAD ===== */
     .file-drop-zone {
-        height: 480px;
+        flex: 1 1 auto;
+        min-height: 380px;
         background: #0f172a;
         display: flex;
         align-items: center;
@@ -1901,9 +1934,25 @@
         border: 1px solid rgba(79,70,229,0.3);
         color: #a5b4fc;
         border-radius: 20px;
-        padding: 4px 12px;
+        padding: 4px 10px;
         font-size: 0.8rem;
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
     }
+    .file-chip-remove {
+        background: none;
+        border: none;
+        color: #a5b4fc;
+        padding: 0;
+        line-height: 1;
+        cursor: pointer;
+        opacity: 0.6;
+        font-size: 0.85rem;
+        display: inline-flex;
+        align-items: center;
+    }
+    .file-chip-remove:hover { opacity: 1; color: #f87171; }
 
     /* ===== CUSTOM RULES ===== */
     .custom-rules-panel {
@@ -2128,6 +2177,106 @@
         background: #f8fafc;
         flex: 1 1 auto;
         min-height: 0;
+    }
+
+    /* ===== LOADING SKELETON ===== */
+    .loading-skeleton { animation: pulse 1.5s ease-in-out infinite; }
+    @@keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.5; }
+    }
+    .skeleton-line {
+        height: 14px;
+        background: linear-gradient(90deg, #e2e8f0 25%, #f1f5f9 50%, #e2e8f0 75%);
+        background-size: 200% 100%;
+        border-radius: 8px;
+        animation: shimmer 1.5s infinite;
+    }
+    .skeleton-line.w-50 { width: 50%; }
+    .skeleton-line.w-75 { width: 75%; }
+    .skeleton-line.w-90 { width: 90%; }
+    .skeleton-card {
+        height: 72px;
+        background: linear-gradient(90deg, #e2e8f0 25%, #f1f5f9 50%, #e2e8f0 75%);
+        background-size: 200% 100%;
+        border-radius: 12px;
+        animation: shimmer 1.5s infinite;
+    }
+    .skeleton-block {
+        height: 56px;
+        background: linear-gradient(90deg, #e2e8f0 25%, #f1f5f9 50%, #e2e8f0 75%);
+        background-size: 200% 100%;
+        border-radius: 10px;
+        animation: shimmer 1.5s infinite;
+    }
+    @@keyframes shimmer {
+        0% { background-position: 200% 0; }
+        100% { background-position: -200% 0; }
+    }
+
+    /* ===== COMPACT SCORES ROW ===== */
+    .scores-row {
+        display: flex;
+        gap: 10px;
+    }
+    .score-card {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 12px;
+        border-radius: 12px;
+        border: 1px solid transparent;
+    }
+    .score-perf { background: #fffbeb; border-color: #fde68a; }
+    .score-sec  { background: #fff1f2; border-color: #fecdd3; }
+    .score-maint{ background: #f0fdf4; border-color: #bbf7d0; }
+    .score-icon {
+        font-size: 1.3rem;
+        flex-shrink: 0;
+    }
+    .score-perf .score-icon  { color: #d97706; }
+    .score-sec  .score-icon  { color: #e11d48; }
+    .score-maint .score-icon { color: #16a34a; }
+    .score-body { flex: 1; min-width: 0; }
+    .score-label {
+        font-size: 0.72rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: #64748b;
+        margin-bottom: 1px;
+    }
+    .score-value {
+        font-size: 1.25rem;
+        font-weight: 800;
+        line-height: 1;
+        color: #0f172a;
+        margin-bottom: 4px;
+    }
+    .score-max { font-size: 0.7rem; font-weight: 500; color: #94a3b8; }
+    .score-bar {
+        height: 4px;
+        background: rgba(0,0,0,0.08);
+        border-radius: 4px;
+        overflow: hidden;
+    }
+    .score-fill {
+        height: 100%;
+        border-radius: 4px;
+        transition: width 1.2s cubic-bezier(0.4,0,0.2,1);
+    }
+    .score-perf .score-fill  { background: #f59e0b; }
+    .score-sec  .score-fill  { background: #f43f5e; }
+    .score-maint .score-fill { background: #22c55e; }
+
+    /* ===== ACTION CARD ===== */
+    .action-card {
+        background: #ffffff;
+        border: 1px solid rgba(226,232,240,0.8);
+        border-radius: 16px;
+        box-shadow: 0 4px 20px -4px rgba(0,0,0,0.06);
+        padding: 1.25rem;
     }
 
 </style>
@@ -2662,7 +2811,13 @@
     // File upload handlers
     async Task HandleFileSelected(InputFileChangeEventArgs e)
     {
-        uploadedFiles = e.GetMultipleFiles(10).ToList();
+        var newFiles = e.GetMultipleFiles(20).ToList();
+        foreach (var f in newFiles)
+        {
+            // Skip duplicates by name+size
+            if (!uploadedFiles.Any(x => x.Name == f.Name && x.Size == f.Size))
+                uploadedFiles.Add(f);
+        }
         await Task.CompletedTask;
     }
 
