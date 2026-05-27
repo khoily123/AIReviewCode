@@ -21,27 +21,34 @@ namespace Repositories
             _config = config;
         }
 
+        private const int GeminiTimeoutSeconds = 20;
+        private const int FallbackTimeoutSeconds = 30;
+
         public async Task<string> CallAI(string prompt)
         {
-            try 
+            try
             {
-                return await CallGeminiAsync(prompt);
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(GeminiTimeoutSeconds));
+                return await CallGeminiAsync(prompt, cts.Token);
             }
-            catch (Exception ex) when (IsRateLimit(ex))
+            catch (Exception ex) when (ShouldFallback(ex))
             {
-                try 
+                try
                 {
-                    return await CallGroqAsync(prompt);
+                    using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(FallbackTimeoutSeconds));
+                    return await CallGroqAsync(prompt, cts.Token);
                 }
-                catch (Exception ex2) when (IsRateLimit(ex2))
+                catch (Exception ex2) when (ShouldFallback(ex2))
                 {
-                    return await CallTogetherAsync(prompt);
+                    using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(FallbackTimeoutSeconds));
+                    return await CallTogetherAsync(prompt, cts.Token);
                 }
             }
         }
 
-        private bool IsRateLimit(Exception ex)
+        private bool ShouldFallback(Exception ex)
         {
+            if (ex is OperationCanceledException or TaskCanceledException) return true;
             var msg = ex.Message;
             return msg.Contains("429") || msg.Contains("TooManyRequests") || msg.Contains("Rate limit")
                 || msg.Contains("RequestEntityTooLarge") || msg.Contains("413")
@@ -52,34 +59,33 @@ namespace Repositories
                 || msg.Contains("504") || msg.Contains("temporarily");
         }
 
-        private async Task<string> CallGeminiAsync(string prompt)
+        // Keep old name as alias so CallAIText can reuse
+        private bool IsRateLimit(Exception ex) => ShouldFallback(ex);
+
+        private async Task<string> CallGeminiAsync(string prompt, CancellationToken ct = default)
         {
             var apiKey = _config["OpenAI:ApiKey"];
 
             var requestBody = new
             {
-                contents = new[]
-                {
-            new { parts = new[] { new { text = prompt } } }
-        }
+                contents = new[] { new { parts = new[] { new { text = prompt } } } },
+                generationConfig = new { temperature = 0.0, topP = 1.0 }
             };
 
             var url = $"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={apiKey}";
             var request = new HttpRequestMessage(HttpMethod.Post, url);
-
             request.Content = JsonContent.Create(requestBody);
 
-            var response = await _httpClient.SendAsync(request);
+            var response = await _httpClient.SendAsync(request, ct);
 
             if (!response.IsSuccessStatusCode)
             {
-                var errorJson = await response.Content.ReadAsStringAsync();
+                var errorJson = await response.Content.ReadAsStringAsync(ct);
                 throw new HttpRequestException($"Gemini API Error: {response.StatusCode} - {errorJson}");
             }
 
-            // Dùng stream thay vì đọc chuỗi để tối ưu bộ nhớ
-            using var stream = await response.Content.ReadAsStreamAsync();
-            using var doc = await JsonDocument.ParseAsync(stream);
+            using var stream = await response.Content.ReadAsStreamAsync(ct);
+            using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct);
 
             string? text = null;
 
@@ -115,49 +121,50 @@ namespace Repositories
 
         public async Task<string> CallAIText(string prompt)
         {
-            try 
+            try
             {
-                return await CallGeminiTextAsync(prompt);
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(GeminiTimeoutSeconds));
+                return await CallGeminiTextAsync(prompt, cts.Token);
             }
-            catch (Exception ex) when (IsRateLimit(ex))
+            catch (Exception ex) when (ShouldFallback(ex))
             {
-                try 
+                try
                 {
-                    return await CallGroqAsync(prompt);
+                    using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(FallbackTimeoutSeconds));
+                    return await CallGroqAsync(prompt, cts.Token);
                 }
-                catch (Exception ex2) when (IsRateLimit(ex2))
+                catch (Exception ex2) when (ShouldFallback(ex2))
                 {
-                    return await CallTogetherAsync(prompt);
+                    using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(FallbackTimeoutSeconds));
+                    return await CallTogetherAsync(prompt, cts.Token);
                 }
             }
         }
 
-        private async Task<string> CallGeminiTextAsync(string prompt)
+        private async Task<string> CallGeminiTextAsync(string prompt, CancellationToken ct = default)
         {
             var apiKey = _config["OpenAI:ApiKey"];
 
             var requestBody = new
             {
-                contents = new[]
-                {
-                    new { parts = new[] { new { text = prompt } } }
-                }
+                contents = new[] { new { parts = new[] { new { text = prompt } } } },
+                generationConfig = new { temperature = 0.0, topP = 1.0 }
             };
 
             var url = $"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={apiKey}";
             var request = new HttpRequestMessage(HttpMethod.Post, url);
             request.Content = JsonContent.Create(requestBody);
 
-            var response = await _httpClient.SendAsync(request);
+            var response = await _httpClient.SendAsync(request, ct);
 
             if (!response.IsSuccessStatusCode)
             {
-                var errorJson = await response.Content.ReadAsStringAsync();
+                var errorJson = await response.Content.ReadAsStringAsync(ct);
                 throw new HttpRequestException($"Gemini API Error: {response.StatusCode} - {errorJson}");
             }
 
-            using var stream = await response.Content.ReadAsStreamAsync();
-            using var doc = await JsonDocument.ParseAsync(stream);
+            using var stream = await response.Content.ReadAsStreamAsync(ct);
+            using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct);
 
             string? text = null;
             if (doc.RootElement.TryGetProperty("candidates", out var candidates) && candidates.GetArrayLength() > 0)
@@ -184,7 +191,9 @@ namespace Repositories
 
             try
             {
-                response = await BeginGeminiStreamAsync(prompt, ct);
+                using var geminiCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                geminiCts.CancelAfter(TimeSpan.FromSeconds(GeminiTimeoutSeconds));
+                response = await BeginGeminiStreamAsync(prompt, geminiCts.Token);
                 if (!response.IsSuccessStatusCode)
                 {
                     var statusCode = (int)response.StatusCode;
@@ -193,7 +202,7 @@ namespace Repositories
                     throw new HttpRequestException($"429 TooManyRequests Gemini: {statusCode} {body}");
                 }
             }
-            catch (Exception ex) when (IsRateLimit(ex))
+            catch (Exception ex) when (ShouldFallback(ex))
             {
                 response?.Dispose(); response = null;
                 try
@@ -210,7 +219,7 @@ namespace Repositories
                         throw new HttpRequestException($"429 TooManyRequests Groq: {statusCode} {body}");
                     }
                 }
-                catch (Exception ex2) when (IsRateLimit(ex2))
+                catch (Exception ex2) when (ShouldFallback(ex2))
                 {
                     response?.Dispose(); response = null;
                     try
@@ -320,30 +329,55 @@ namespace Repositories
             }
         }
 
-        private async Task<string> CallGroqAsync(string prompt)
+        private async Task<string> CallGroqAsync(string prompt, CancellationToken ct = default)
         {
             var apiKey = _config["Groq:ApiKey"];
             var url = "https://api.groq.com/openai/v1/chat/completions";
-            // Sử dụng LLaMA 3.3 70B của Groq (Model mới nhất)
-            return await CallOpenAICompatibleAsync(url, apiKey, "llama-3.3-70b-versatile", prompt);
+            var trimmed = TrimPromptForGroq(prompt, maxChars: 18_000);
+            return await CallOpenAICompatibleAsync(url, apiKey, "llama-3.3-70b-versatile", trimmed, ct);
         }
 
-        private async Task<string> CallTogetherAsync(string prompt)
+        private async Task<string> CallTogetherAsync(string prompt, CancellationToken ct = default)
         {
             var apiKey = _config["Together:ApiKey"];
             var url = "https://api.together.xyz/v1/chat/completions";
-            // Sử dụng LLaMA 3 70B của Together
-            return await CallOpenAICompatibleAsync(url, apiKey, "meta-llama/Llama-3-70b-chat-hf", prompt);
+            var trimmed = TrimPromptForGroq(prompt, maxChars: 18_000);
+            return await CallOpenAICompatibleAsync(url, apiKey, "meta-llama/Llama-3-70b-chat-hf", trimmed, ct);
         }
 
-        private async Task<string> CallOpenAICompatibleAsync(string url, string apiKey, string model, string prompt)
+        // Trim the code section of the prompt to fit smaller context limits (Groq/Together).
+        // Keeps the instruction/schema part intact; only shortens the user's code block.
+        private static string TrimPromptForGroq(string prompt, int maxChars)
+        {
+            if (prompt.Length <= maxChars) return prompt;
+
+            // Find the code block boundary — everything after the last ═══ separator line
+            var separatorIdx = prompt.LastIndexOf("━━━", StringComparison.Ordinal);
+            if (separatorIdx < 0) return prompt[..maxChars];
+
+            // Find the next newline after the separator block to locate code start
+            var codeStart = prompt.IndexOf('\n', separatorIdx);
+            if (codeStart < 0) return prompt[..maxChars];
+
+            var header = prompt[..codeStart];
+            var code = prompt[codeStart..];
+            var allowedCodeChars = maxChars - header.Length - 200;
+            if (allowedCodeChars < 500) return prompt[..maxChars];
+
+            var trimmedCode = code[..allowedCodeChars] +
+                "\n\n[NOTE: Code truncated to fit model context limit — review visible portion only.]";
+            return header + trimmedCode;
+        }
+
+        private async Task<string> CallOpenAICompatibleAsync(string url, string apiKey, string model, string prompt, CancellationToken ct = default)
         {
             var isJsonExpected = prompt.Contains("ONLY valid JSON");
 
             var requestBody = new Dictionary<string, object>
             {
                 { "model", model },
-                { "messages", new[] { new { role = "user", content = prompt } } }
+                { "messages", new[] { new { role = "user", content = prompt } } },
+                { "temperature", 0 }
             };
 
             if (isJsonExpected)
@@ -355,16 +389,16 @@ namespace Repositories
             request.Headers.Add("Authorization", $"Bearer {apiKey}");
             request.Content = JsonContent.Create(requestBody);
 
-            var response = await _httpClient.SendAsync(request);
+            var response = await _httpClient.SendAsync(request, ct);
 
             if (!response.IsSuccessStatusCode)
             {
-                var errorJson = await response.Content.ReadAsStringAsync();
+                var errorJson = await response.Content.ReadAsStringAsync(ct);
                 throw new HttpRequestException($"API Error ({model}): {response.StatusCode} - {errorJson}");
             }
 
-            using var stream = await response.Content.ReadAsStreamAsync();
-            using var doc = await JsonDocument.ParseAsync(stream);
+            using var stream = await response.Content.ReadAsStreamAsync(ct);
+            using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct);
 
             if (doc.RootElement.TryGetProperty("choices", out var choices) && choices.GetArrayLength() > 0)
             {

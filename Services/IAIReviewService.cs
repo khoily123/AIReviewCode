@@ -11,6 +11,7 @@ namespace Services
     public interface IAIReviewService
     {
         Task<ReviewResponseDto> ReviewCode(ReviewRequestDto request);
+        Task<string> GenerateFlowchart(string code);
         Task<ChatResponseDto> ChatWithCode(ChatRequestDto request);
         IAsyncEnumerable<string> ChatWithCodeStream(ChatRequestDto request, CancellationToken ct = default);
         Task<TranslateResponseDto> TranslateCode(TranslateRequestDto request);

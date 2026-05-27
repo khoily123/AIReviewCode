@@ -5,5 +5,6 @@ namespace AIReviewerAPI.DTOs
         public string OriginalCode { get; set; } = string.Empty;
         public string ChatHistory { get; set; } = string.Empty;
         public string UserMessage { get; set; } = string.Empty;
+        public string ReviewContext { get; set; } = string.Empty;
     }
 }

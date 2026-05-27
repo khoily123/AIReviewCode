@@ -2,6 +2,13 @@
 using Services;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Allow long-running AI review requests (up to 5 min) without Kestrel closing the connection.
+builder.WebHost.ConfigureKestrel(o =>
+{
+    o.Limits.KeepAliveTimeout       = TimeSpan.FromMinutes(5);
+    o.Limits.RequestHeadersTimeout  = TimeSpan.FromMinutes(2);
+});
 builder.Services.AddMemoryCache();
 
 builder.Services.AddCors(options =>

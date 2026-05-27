@@ -44,18 +44,31 @@ namespace Services
                 var truncatedNote = "";
 
                 bool isDiff = codeToAnalyze.Contains("// === ") && (codeToAnalyze.Contains("[modified]") || codeToAnalyze.Contains("[added]") || codeToAnalyze.Contains("@@"));
-                bool isMultiFile = codeToAnalyze.Contains("// === FILE:") || (codeToAnalyze.Contains("// ===") && codeToAnalyze.IndexOf("// ===") != codeToAnalyze.LastIndexOf("// ==="));
+                int fileMarkerCount = CountOccurrences(codeToAnalyze, "// === FILE:");
+                bool isMultiFile = fileMarkerCount > 1 ||
+                    (fileMarkerCount == 0 && codeToAnalyze.Contains("// ===") &&
+                     codeToAnalyze.IndexOf("// ===") != codeToAnalyze.LastIndexOf("// ==="));
                 bool isGitHubPr = codeToAnalyze.TrimStart().StartsWith("// PR:") || codeToAnalyze.TrimStart().StartsWith("// Source: GitHub") || codeToAnalyze.TrimStart().StartsWith("// Compare:") || codeToAnalyze.TrimStart().StartsWith("// Branch:");
+                bool isSingleUpload = fileMarkerCount == 1 && !isMultiFile && !isDiff && !isGitHubPr;
 
-                // For large single files: strip blank lines + line comments to shrink before truncate
-                int maxCodeChars = (isMultiFile || isDiff || isGitHubPr) ? 24_000 : 35_000;
-                if (!isDiff && !isGitHubPr && codeToAnalyze.Length > maxCodeChars)
-                    codeToAnalyze = CompressCode(codeToAnalyze);
+                // For single uploaded file: strip the "// === FILE: name ===" header line so
+                // AI line numbers match the actual file (header would offset everything by 1)
+                if (isSingleUpload)
+                {
+                    var headerEnd = codeToAnalyze.IndexOf('\n');
+                    if (headerEnd >= 0) codeToAnalyze = codeToAnalyze[(headerEnd + 1)..];
+                }
+
+                // Do NOT compress code — CompressCode removes blank lines which breaks line numbers.
+                // Just truncate at the character limit if needed.
+                int maxCodeChars = (isMultiFile || isDiff || isGitHubPr) ? 24_000 : 40_000;
 
                 if (codeToAnalyze.Length > maxCodeChars)
                 {
-                    codeToAnalyze = codeToAnalyze[..maxCodeChars];
-                    truncatedNote = $"\n[NOTE: Input was truncated to {maxCodeChars} chars — review the visible portion only.]\n";
+                    // Truncate at last complete line to avoid cutting mid-line
+                    var cutOff = codeToAnalyze.LastIndexOf('\n', maxCodeChars);
+                    codeToAnalyze = cutOff > 0 ? codeToAnalyze[..cutOff] : codeToAnalyze[..maxCodeChars];
+                    truncatedNote = $"\n[NOTE: File truncated at line {codeToAnalyze.Count(c => c == '\n')} — review visible portion only.]\n";
                 }
 
                 var securitySection = codeToAnalyze.Length > 8000
@@ -178,27 +191,9 @@ Rules:
 - Do not include explanations outside JSON
 - Always return JSON
 - LANGUAGE: You MUST write ALL text fields (message, description, hackerExploit, notes) in Vietnamese (Tiếng Việt) ONLY. Do NOT mix in Chinese, Japanese, Korean, or any other language. Variable names and code stay in their original language, but all explanatory text must be pure Vietnamese.
-- CRITICAL: The 'fixedCode' MUST resolve all issues completely and be production-ready. You MUST preserve proper indentation and newlines (\n) within the 'fixedCode' string. Do not minify or one-line the code.
+- CRITICAL: 'fixedCode': {(truncatedNote.Length > 0 ? "The code was truncated so you CANNOT rewrite the full file. Return EXACTLY empty string \"\" — do NOT write any explanation, message, or partial code in this field." : "MUST contain the complete, production-ready fixed file. Preserve all indentation and newlines as \\n. Do not minify. Do NOT add any new imports, using statements, or dependencies that were not already present in the original code — only fix actual bugs.")}
 - CRITICAL: If the provided code is already perfect and has no bugs, DO NOT invent bugs. Return an empty array [] for 'bugs' and score 100 for all metrics.
-- CRITICAL: 'mermaidChart': {((isDiff || isGitHubPr || isMultiFile) ? "Return empty string \"\" — flowchart is not applicable for diffs or multi-file input." : "MUST be a DETAILED, PROFESSIONAL flowchart using Mermaid.js 'flowchart TD' syntax. STRICT RULES:")}
-  * First line MUST be exactly: flowchart TD
-  * Node IDs: use only alphanumeric and underscore, no spaces (e.g. A1, start_node, getUserInfo)
-  * Node labels with special chars MUST be wrapped in double quotes: A1[""GetUserInfo(userId)""] NOT A1[GetUserInfo(userId)]
-  * Decision diamond nodes: A1{{""Is valid?""}} — always use double curly braces and quote the label
-  * Terminal nodes: A1([""Start""]) and Z1([""End""])
-  * Edge labels with spaces: A1 -->|""has error""| B1 — always quote multi-word labels
-  * classDef MUST use this exact format on separate lines:
-    classDef successStyle fill:#d1fae5,stroke:#10b981,color:#064e3b
-    classDef errorStyle fill:#fee2e2,stroke:#ef4444,color:#7f1d1d
-    classDef decisionStyle fill:#dbeafe,stroke:#3b82f6,color:#1e3a5f
-    classDef processStyle fill:#f3f4f6,stroke:#6b7280,color:#1f2937
-    classDef ioStyle fill:#fef3c7,stroke:#f59e0b,color:#78350f
-  * class assignment: class nodeId successStyle
-  * Every if/else/try/catch/loop MUST be shown with labeled edges
-  * subgraph names must be simple words: subgraph UserService
-  * Minimum 8 nodes for any non-trivial code
-  * Do NOT use backticks anywhere in the value
-  * Escape newlines as \n in the JSON string
+- CRITICAL: 'mermaidChart': Return EXACTLY empty string "" — the flowchart is generated in a dedicated separate pass.
 - CRITICAL: If a security vulnerability is found (like SQL Injection), provide a specific attack payload example in 'hackerExploit'. If no security vulnerability exists, return an empty string """".
 - CRITICAL: 'unitTests' MUST contain a complete, compilable xUnit test class (using Xunit; namespace) that covers all public methods. Include proper using statements. Use \n for newlines inside the JSON string value.
 
@@ -208,19 +203,49 @@ Code to analyze:
 {codeToAnalyze}{truncatedNote}
 ";
 
+                // Flowchart is generated separately by the client after review completes.
+                // Running both concurrently caused Gemini rate-limiting and hung the entire request.
+                bool generateSeparateFlowchart = !isDiff && !isGitHubPr && !isMultiFile;
+
                 var aiResult = await _repository.CallAI(prompt);
+                var separateMermaid = "";
 
                 var modelResult = JsonSerializer.Deserialize<ReviewResponse>(aiResult, _jsonOptions)
                     ?? new ReviewResponse();
 
+                // Discard fixedCode when: (a) file was truncated, or (b) AI returned explanatory text
+                var fixedCode = modelResult.FixedCode;
+                if (!string.IsNullOrEmpty(fixedCode))
+                {
+                    // If input was truncated the AI can't produce a complete fix — always discard
+                    if (truncatedNote.Length > 0)
+                    {
+                        fixedCode = null;
+                    }
+                    else
+                    {
+                        // Discard if it looks like a prose message: short, no newlines, no code keywords
+                        var t = fixedCode.TrimStart();
+                        bool hasCodeKeyword = t.StartsWith("//") || t.StartsWith("using ") || t.StartsWith("namespace ")
+                            || t.StartsWith("public ") || t.StartsWith("private ") || t.StartsWith("protected ")
+                            || t.StartsWith("class ") || t.StartsWith("import ") || t.StartsWith("def ")
+                            || t.StartsWith("func ") || t.StartsWith("package ") || t.StartsWith("<!") || t.StartsWith("<?")
+                            || (t.StartsWith("<") && t.Length > 1 && char.IsLetter(t[1]) && t.Contains('>'));
+                        bool looksLikeMessage = !hasCodeKeyword && (t.Length < 800 || !t.Contains('\n'));
+                        if (looksLikeMessage) fixedCode = null;
+                    }
+                }
+
                 var dtoResult = new ReviewResponseDto
                 {
                     Summary = modelResult.Message,
-                    FixedCode = modelResult.FixedCode,
+                    FixedCode = fixedCode,
                     PerformanceScore = modelResult.PerformanceScore,
                     SecurityScore = modelResult.SecurityScore,
                     MaintainabilityScore = modelResult.MaintainabilityScore,
-                    MermaidChart = SanitizeMermaid(modelResult.MermaidChart),
+                    MermaidChart = generateSeparateFlowchart
+                        ? separateMermaid
+                        : SanitizeMermaid(modelResult.MermaidChart),
                     HackerExploit = modelResult.HackerExploit,
                     UnitTests = modelResult.UnitTests,
                     ReviewedAt = DateTime.UtcNow,
@@ -355,6 +380,123 @@ unbounded collections in memory, missing cache, sync HTTP calls, no Cancellation
 
 MAINTAINABILITY: God class/long method(>50 lines), magic numbers, dead code, silent catch(Exception), missing IDisposable.";
 
+        public async Task<string> GenerateFlowchart(string code)
+        {
+            if (string.IsNullOrWhiteSpace(code)) return "";
+            bool isTruncated = code.Length > 40_000;
+            var snippet = isTruncated ? code[..40_000] : code;
+            return await GenerateFlowchartAsync(snippet, isTruncated);
+        }
+
+        private static readonly string FlowchartStyleDefs = @"classDef successStyle fill:#d1fae5,stroke:#10b981,color:#064e3b
+classDef errorStyle fill:#fee2e2,stroke:#ef4444,color:#7f1d1d
+classDef decisionStyle fill:#dbeafe,stroke:#3b82f6,color:#1e3a5f
+classDef processStyle fill:#f3f4f6,stroke:#6b7280,color:#1f2937
+classDef ioStyle fill:#fef3c7,stroke:#f59e0b,color:#78350f
+classDef startEnd fill:#1e293b,stroke:#475569,color:#f8fafc";
+
+        private async Task<string> GenerateFlowchartAsync(string code, bool isTruncated)
+        {
+            try
+            {
+                var prompt = isTruncated
+                    ? $@"You are a software architect. Analyze the code below and generate a HIGH-LEVEL ARCHITECTURE diagram.
+
+Show ALL classes, ALL public and private methods, and how they call each other.
+Group methods into subgraphs by class.
+
+Output ONLY raw Mermaid syntax — no JSON, no markdown fences, no explanation.
+
+RULES:
+- First line MUST be exactly: flowchart TD
+- Node IDs: ASCII letters/digits/underscore only (NO Vietnamese, NO spaces in IDs)
+- Labels with special chars or spaces MUST be quoted: A[""GetUser(id)""]
+- Decision diamonds: A{{""Is valid?""}}
+- Terminals: START([""▶ Start""]) endNode([""⏹ End""]) — NEVER use 'end' as a node ID (reserved keyword)
+- Edge labels quoted: -->|""yes""| -->|""no""| -->|""error""|
+- MINIMUM 15 nodes
+- Each class in its own subgraph block
+- Apply styles at the end:
+{FlowchartStyleDefs}
+
+Code:
+{code}"
+                    : $@"You are a software architect. Analyze the code below and produce a COMPREHENSIVE execution-flow diagram.
+
+Your job:
+1. Find every class and method in the file.
+2. For each method, trace the COMPLETE execution:
+   - Entry point → validations → branching (if/else/try/catch) → calls → return/throw
+3. Show every decision as a diamond node with yes/no/error edges.
+4. Group each method's internal flow into a named subgraph.
+5. Connect methods to show call chains.
+
+Output ONLY raw Mermaid syntax — no JSON, no markdown fences, no explanation.
+
+STRICT RULES:
+- First line MUST be exactly: flowchart TD
+- Node IDs: ASCII letters/digits/underscore ONLY — no spaces, no Vietnamese, no special chars
+- Labels with special chars or spaces MUST be quoted: A[""ReviewCode(request)""]
+- Decision diamonds with quoted label: check{{""Input null?""}}
+- Terminals: START([""▶ Start""]) endNode([""⏹ End""]) — NEVER use 'end' as a node ID (reserved keyword)
+- ALL edge labels with spaces quoted: -->|""on error""|
+- Use one subgraph per class/major method group. CORRECT subgraph syntax:
+    subgraph GroupName
+        nodeA --> nodeB
+    end
+  NEVER put node IDs or lists inside subgraph labels. NEVER use [brackets] in subgraph declarations.
+- EVERY if/else → diamond node with |""yes""| and |""no""| edges
+- EVERY try/catch → diamond node with |""success""| and |""error""| edges
+- ALL error/exception paths MUST be shown
+- MINIMUM 20 nodes; complex files should have 30+ nodes
+- Apply styles at end of chart:
+{FlowchartStyleDefs}
+
+Example pattern (follow this structure):
+flowchart TD
+    START([""▶ Start""])
+    START --> validateInput{{""Input empty?""}}
+    validateInput -->|""yes""| throwArg[""Throw ArgumentException""]
+    validateInput -->|""no""| callGemini[""CallGeminiAsync(prompt)""]
+    callGemini --> geminiOk{{""Success?""}}
+    geminiOk -->|""yes""| parseJson[""JsonDocument.Parse""]
+    geminiOk -->|""no""| fallbackGroq[""CallGroqAsync(prompt)""]
+    parseJson --> extractText[""Extract .text field""]
+    fallbackGroq --> groqOk{{""Groq ok?""}}
+    groqOk -->|""yes""| parseJson
+    groqOk -->|""no""| throwFinal[""Throw last exception""]
+    extractText --> END([""⏹ End""])
+    throwArg --> END
+    throwFinal --> END
+    classDef decisionStyle fill:#dbeafe,stroke:#3b82f6,color:#1e3a5f
+    classDef errorStyle fill:#fee2e2,stroke:#ef4444,color:#7f1d1d
+    classDef startEnd fill:#1e293b,stroke:#475569,color:#f8fafc
+    class validateInput geminiOk fallbackGroq groqOk decisionStyle
+    class throwArg throwFinal fallbackGroq errorStyle
+    class START END startEnd
+
+Code to analyze:
+{code}";
+
+                var raw = await _repository.CallAIText(prompt);
+
+                // Strip markdown fences in case AI added them
+                if (raw.Contains("```"))
+                    raw = System.Text.RegularExpressions.Regex.Replace(raw, @"```\w*\r?\n?", "").Trim();
+
+                return SanitizeMermaid(raw);
+            }
+            catch
+            {
+                return "";
+            }
+        }
+
+        // Known Mermaid classDef names used in prompts
+        private static readonly System.Collections.Generic.HashSet<string> _knownStyles =
+            new(System.StringComparer.OrdinalIgnoreCase)
+            { "decisionStyle","errorStyle","successStyle","processStyle","ioStyle","startEnd" };
+
         private static string SanitizeMermaid(string? raw)
         {
             if (string.IsNullOrWhiteSpace(raw)) return raw ?? "";
@@ -362,9 +504,75 @@ MAINTAINABILITY: God class/long method(>50 lines), magic numbers, dead code, sil
             // Strip markdown fences
             raw = raw.Replace("```mermaid", "").Replace("```", "").Trim();
 
+            // Step 0: Rename Mermaid reserved keywords used as node IDs.
+            // "end" closes subgraph blocks, so it cannot be a node ID.
+            // Strategy: replace every word-boundary \bend\b → endNode,
+            // then restore lines that are standalone "end" (subgraph closers).
+            raw = System.Text.RegularExpressions.Regex.Replace(raw, @"\bend\b", "endNode");
+            raw = System.Text.RegularExpressions.Regex.Replace(
+                raw, @"^\s*endNode\s*$",
+                m => m.Value.Replace("endNode", "end"),
+                System.Text.RegularExpressions.RegexOptions.Multiline);
+
+            // Step 0b: Fix broken subgraph declarations from AI.
+            // AI sometimes puts node-ID lists in subgraph labels:
+            //   subgraph MyGroup ["node1  node2  node3"]  → subgraph MyGroup
+            //   subgraph CreateHostBuilder [              → subgraph CreateHostBuilder
+            // Strip anything after "subgraph <id>" on the same line.
+            raw = System.Text.RegularExpressions.Regex.Replace(
+                raw, @"^(\s*subgraph\s+\w+)\s*\[.*$", "$1",
+                System.Text.RegularExpressions.RegexOptions.Multiline);
+
+            // Remove orphan "]" lines left by the block-body pattern "subgraph Name [\n...\n]"
+            raw = System.Text.RegularExpressions.Regex.Replace(
+                raw, @"^\s*\]\s*$", "",
+                System.Text.RegularExpressions.RegexOptions.Multiline);
+
+            // Close any unclosed subgraph blocks (count subgraph vs end).
+            {
+                var lines2 = raw.Split('\n').ToList();
+                int depth2 = 0;
+                foreach (var ln in lines2)
+                {
+                    var t = ln.Trim();
+                    if (t.StartsWith("subgraph ") || t == "subgraph") depth2++;
+                    else if (t == "end") depth2 = Math.Max(0, depth2 - 1);
+                }
+                while (depth2-- > 0) lines2.Add("end");
+                raw = string.Join('\n', lines2);
+            }
+
+            // Step 1: Replace non-ASCII chars in node IDs (outside label brackets / quotes)
+            // Labels are inside [..], {..}, (..) or ".."; node IDs are outside these
+            raw = SanitizeNodeIds(raw);
+
+            // Step 2: Fix "class A B C styleName" → "class A,B,C styleName"
+            raw = System.Text.RegularExpressions.Regex.Replace(
+                raw,
+                @"^(\s*class\s+)(\w[\w, ]*?)(\s+\w+\s*)$",
+                m =>
+                {
+                    var prefix = m.Groups[1].Value;
+                    var nodesPart = m.Groups[2].Value;
+                    var stylePart = m.Groups[3].Value.Trim();
+                    // Split tokens; last token is style name, rest are node IDs
+                    var tokens = nodesPart.Split(new[]{' ',','}, System.StringSplitOptions.RemoveEmptyEntries);
+                    if (tokens.Length > 1 && _knownStyles.Contains(stylePart))
+                    {
+                        return prefix + string.Join(",", tokens) + " " + stylePart;
+                    }
+                    if (tokens.Length > 1)
+                    {
+                        // Last token might be style, rest are node IDs
+                        var nodeIds = string.Join(",", tokens);
+                        return prefix + nodeIds + " " + stylePart;
+                    }
+                    return m.Value;
+                },
+                System.Text.RegularExpressions.RegexOptions.Multiline);
+
             // Fix invalid edge syntax: -->|"label"|> Node  →  -->|"label"| Node
             raw = raw.Replace("\"|>", "\"|");
-            // Also fix unquoted edge labels: --|label|> → --|label|
             raw = System.Text.RegularExpressions.Regex.Replace(raw, @"\|([^|""]+)\|>", "|$1|");
 
             // Fix spaces around edge label quotes: -->| "label" | → -->|"label"|
@@ -432,6 +640,57 @@ MAINTAINABILITY: God class/long method(>50 lines), magic numbers, dead code, sil
             return raw;
         }
 
+        // Replace non-ASCII chars in node IDs (outside label brackets and quotes).
+        // Also auto-quotes unquoted labels that contain spaces: [label text] → ["label text"]
+        private static string SanitizeNodeIds(string raw)
+        {
+            var sb = new System.Text.StringBuilder(raw.Length);
+            int depth = 0;   // bracket depth: [, {, (
+            bool inQuote = false;
+
+            for (int i = 0; i < raw.Length; i++)
+            {
+                char c = raw[i];
+
+                if (c == '"' && depth == 0) { inQuote = !inQuote; sb.Append(c); continue; }
+                if (inQuote) { sb.Append(c); continue; }
+
+                if (c is '[' or '{' or '(') { depth++; sb.Append(c); continue; }
+                if (c is ']' or '}' or ')') { depth = Math.Max(0, depth - 1); sb.Append(c); continue; }
+
+                // Outside labels: replace non-ASCII identifier chars with underscore
+                if (depth == 0 && c > 127 && (char.IsLetterOrDigit(c) || c == '_'))
+                    sb.Append('_');
+                else
+                    sb.Append(c);
+            }
+
+            var result = sb.ToString();
+
+            // Auto-quote unquoted node labels that contain spaces: [label text] → ["label text"]
+            result = System.Text.RegularExpressions.Regex.Replace(
+                result,
+                @"\[(?!"")([^\]""]+)\]",
+                m =>
+                {
+                    var inner = m.Groups[1].Value.Trim();
+                    // Only quote if it has spaces or special chars (already-single-word labels are fine)
+                    return inner.Contains(' ') || inner.Any(ch => !char.IsAsciiLetterOrDigit(ch) && ch != '_')
+                        ? "[\"" + inner + "\"]"
+                        : m.Value;
+                });
+
+            return result;
+        }
+
+        private static int CountOccurrences(string text, string pattern)
+        {
+            int count = 0, idx = 0;
+            while ((idx = text.IndexOf(pattern, idx, StringComparison.Ordinal)) >= 0)
+            { count++; idx += pattern.Length; }
+            return count;
+        }
+
         // Reduce file size by stripping blank lines and single-line comments before truncation.
         // Preserves block structure so the AI still sees meaningful code.
         private static string CompressCode(string code)
@@ -457,16 +716,20 @@ MAINTAINABILITY: God class/long method(>50 lines), magic numbers, dead code, sil
         {
             var codeContext = string.IsNullOrWhiteSpace(request.OriginalCode)
                 ? ""
-                : $"\n\nContext — code the user is working on:\n```\n{request.OriginalCode}\n```\n";
+                : $"\n\n--- CODE ĐANG XEM XÉT ---\n```\n{request.OriginalCode}\n```\n";
 
-            return $@"You are a helpful, knowledgeable AI assistant. You can answer questions about ANY topic: programming, technology, science, math, history, language, everyday life — anything the user asks.
-{codeContext}
+            var reviewContext = string.IsNullOrWhiteSpace(request.ReviewContext)
+                ? ""
+                : $"\n\n--- KẾT QUẢ REVIEW VỪA THỰC HIỆN ---\n{request.ReviewContext}\n";
+
+            return $@"You are a helpful AI assistant embedded in an AI Code Review tool. You can answer ANY question, but you have full context of the code and review results shown below — use them when the user asks about their code or the review.
+{codeContext}{reviewContext}
 Conversation so far:
 {request.ChatHistory}
 
 User: {request.UserMessage}
 
-Reply directly and concisely in Vietnamese. If the question is about the code above, reference it specifically. If it's a general question, just answer it naturally.";
+Reply in Vietnamese. When referencing bugs or review findings, be specific (mention line numbers, bug descriptions). If it's a general question unrelated to the code, answer naturally.";
         }
     }
 }

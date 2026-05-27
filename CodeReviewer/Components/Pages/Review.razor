@@ -27,7 +27,15 @@
                             <i class="bi bi-code-slash text-info"></i>
                             <span>Code Input</span>
                         </div>
-                        <span class="badge bg-secondary opacity-75 rounded-pill">@(codeContent?.Length ?? 0) chars</span>
+                        @if (inputMode == "files" && uploadedFiles.Count > 0)
+                        {
+                            var totalKb = uploadedFiles.Sum(f => f.Size) / 1024;
+                            <span class="badge bg-primary opacity-75 rounded-pill">@uploadedFiles.Count file (@totalKb KB)</span>
+                        }
+                        else
+                        {
+                            <span class="badge bg-secondary opacity-75 rounded-pill">@(codeContent?.Length ?? 0) chars</span>
+                        }
                     </div>
                     <div class="p-3 pb-0 bg-white border-bottom">
                         <div class="d-flex align-items-center gap-3 mb-2">
@@ -333,8 +341,10 @@
                                     }
 
                                     <div class="mt-3 mb-2 fw-bold text-muted ps-1">Danh sách lỗi phát hiện:</div>
-                                    @foreach (var bug in responseDto.DetectedBugs)
+                                    @foreach (var (bug, idx) in responseDto.DetectedBugs.Select((b, i) => (b, i)))
                                     {
+                                        var hasFix = bugFixes.TryGetValue(idx, out var fixText);
+                                        var isFixLoading = loadingBugFixes.Contains(idx);
                                         <div class="bug-item">
                                             <div class="d-flex align-items-start gap-3">
                                                 @if (bug.Line > 0)
@@ -342,7 +352,33 @@
                                                     <div class="bug-line">Line @bug.Line</div>
                                                 }
                                                 <div class="bug-desc flex-grow-1">@bug.Description</div>
+                                                <button class="btn-bug-fix @(isFixLoading ? "loading" : "")"
+                                                        @onclick="() => GetBugFix(idx, bug)"
+                                                        disabled="@isFixLoading"
+                                                        title="Gợi ý cách sửa lỗi này">
+                                                    @if (isFixLoading)
+                                                    {
+                                                        <span class="spinner-border spinner-border-sm"></span>
+                                                    }
+                                                    else if (hasFix)
+                                                    {
+                                                        <i class="bi bi-arrow-repeat"></i>
+                                                    }
+                                                    else
+                                                    {
+                                                        <i class="bi bi-wrench-adjustable"></i>
+                                                    }
+                                                </button>
                                             </div>
+                                            @if (hasFix && !string.IsNullOrEmpty(fixText))
+                                            {
+                                                <div class="bug-fix-suggestion">
+                                                    <div class="bug-fix-header">
+                                                        <i class="bi bi-lightbulb-fill me-1 text-warning"></i> Gợi ý sửa
+                                                    </div>
+                                                    <pre class="bug-fix-code"><code>@fixText</code></pre>
+                                                </div>
+                                            }
                                         </div>
                                     }
                                 }
@@ -359,7 +395,15 @@
                             }
                             else if (activeTab == "Flowchart")
                             {
-                                @if (!string.IsNullOrEmpty(responseDto.MermaidChart))
+                                @if (isLoadingFlowchart)
+                                {
+                                    <div class="text-center text-muted mt-5">
+                                        <div class="spinner-border text-primary mb-3" style="width:2.5rem;height:2.5rem;"></div>
+                                        <p class="fw-semibold">Đang tạo sơ đồ thuật toán...</p>
+                                        <p class="small">AI đang phân tích luồng code, vui lòng chờ</p>
+                                    </div>
+                                }
+                                else if (!string.IsNullOrEmpty(responseDto.MermaidChart))
                                 {
                                     <div class="flowchart-toolbar">
                                         <div class="d-flex align-items-center gap-2">
@@ -458,7 +502,11 @@
                                         <p class="small" style="max-width:320px;margin:0 auto;">
                                             @if (reviewedInputMode == "files")
                                             {
-                                                <span>File quá lớn hoặc có quá nhiều files. AI chỉ phân tích được lỗi, không tạo được toàn bộ code sửa. Hãy paste từng đoạn code vào tab <strong>Paste Code</strong>.</span>
+                                                <span>
+                                                    File quá lớn — AI đã phân tích và tìm thấy lỗi (xem tab <strong>Phân tích</strong>),
+                                                    nhưng không thể viết lại toàn bộ file.<br /><br />
+                                                    Để sửa: copy đoạn code có lỗi → dán vào tab <strong>Paste Code</strong> → review lại.
+                                                </span>
                                             }
                                             else
                                             {
@@ -498,7 +546,16 @@
                                     <div class="text-center text-muted mt-4">
                                         <i class="bi bi-file-diff fs-1 opacity-25"></i>
                                         <p class="mt-3 fw-semibold">Không có code đã sửa để so sánh</p>
-                                        <p class="small">AI không tạo được bản sửa. Xem lý do ở tab <strong>Auto Fix</strong>.</p>
+                                        <p class="small">
+                                            @if (reviewedInputMode == "files")
+                                            {
+                                                <span>File quá lớn — AI chỉ phân tích được lỗi, không thể viết lại toàn bộ file để so sánh.</span>
+                                            }
+                                            else
+                                            {
+                                                <span>AI không tạo được bản sửa. Xem lý do ở tab <strong>Auto Fix</strong>.</span>
+                                            }
+                                        </p>
                                     </div>
                                 }
                                 else
@@ -519,7 +576,7 @@
                                         </span>
                                     </div>
                                     <div class="diff-container custom-scrollbar">
-                                        @foreach (var line in ComputeDiff(reviewedCode, responseDto.FixedCode ?? ""))
+                                        @foreach (var line in ComputeDiff(StripFileHeader(reviewedCode), responseDto.FixedCode ?? ""))
                                         {
                                             <div class="diff-line diff-@line.Type">
                                                 <span class="diff-prefix">@(line.Type == "insert" ? "+" : line.Type == "delete" ? "-" : " ")</span>
@@ -908,7 +965,7 @@
                 <div class="float-chat-input-area">
                     <input type="text" class="float-chat-input" @bind="chatInput" @bind:event="oninput"
                            @onkeyup="HandleChatKeyUp" placeholder="Nhắn tin..."
-                           disabled="@isChatting" />
+                           disabled="@isChatting" @ref="chatInputRef" />
                     @if (isChatting)
                     {
                         <button class="float-chat-stop" @onclick="StopChat" title="Dừng trả lời">
@@ -1181,6 +1238,45 @@
         color: #451a03;
         font-size: 1rem;
         line-height: 1.5;
+    }
+    .btn-bug-fix {
+        flex-shrink: 0;
+        background: #fff7ed;
+        border: 1px solid #fed7aa;
+        color: #ea580c;
+        border-radius: 6px;
+        padding: 4px 10px;
+        font-size: 0.85rem;
+        cursor: pointer;
+        transition: all 0.2s;
+        white-space: nowrap;
+    }
+    .btn-bug-fix:hover:not(:disabled) { background: #ffedd5; border-color: #f97316; }
+    .btn-bug-fix:disabled { opacity: 0.6; cursor: default; }
+    .bug-fix-suggestion {
+        margin-top: 0.75rem;
+        background: #f0fdf4;
+        border: 1px solid #bbf7d0;
+        border-radius: 8px;
+        overflow: hidden;
+    }
+    .bug-fix-header {
+        background: #dcfce7;
+        padding: 0.4rem 0.9rem;
+        font-size: 0.8rem;
+        font-weight: 600;
+        color: #166534;
+    }
+    .bug-fix-code {
+        margin: 0;
+        padding: 0.75rem 1rem;
+        font-size: 0.82rem;
+        background: transparent;
+        color: #14532d;
+        white-space: pre-wrap;
+        word-break: break-word;
+        max-height: 300px;
+        overflow-y: auto;
     }
 
     /* ===== HACKER EXPLOIT ===== */
@@ -2100,6 +2196,7 @@
     string chatInput = "";
     List<ChatMessage> chatHistory = new();
     ElementReference chatContainerRef;
+    ElementReference chatInputRef;
     CancellationTokenSource? _chatCts;
 
     void ClearChat() { chatHistory.Clear(); chatInput = ""; }
@@ -2275,6 +2372,19 @@
         "kotlin"      => "language-kotlin",
         _             => "language-python"
     };
+
+    // Strip "// === FILE: name ===" header added by the upload handler so it doesn't
+    // appear as a deleted line in the Diff view.
+    string StripFileHeader(string code)
+    {
+        var t = code.TrimStart();
+        if (t.StartsWith("// === FILE:"))
+        {
+            var nl = code.IndexOf('\n');
+            return nl >= 0 ? code[(nl + 1)..] : code;
+        }
+        return code;
+    }
 
     // Diff
     record DiffLine(string Type, string Content);
@@ -2506,11 +2616,48 @@
             {
                 responseDto = dto;
                 await SaveToHistory(dto, reviewedCode);
+
+                // Flowchart is generated in a separate non-blocking call so the review
+                // result appears immediately without waiting for the AI chart generation.
+                bool needsFlowchart = reviewedInputMode != "github"
+                    && !(reviewedInputMode == "files" && uploadedFiles.Count > 1);
+                if (needsFlowchart)
+                    _ = LoadFlowchartAsync(reviewedCode);
             }
         }
         catch (Exception ex) { errorMessage = $"Không thể kết nối API: {ex.Message}"; }
         finally { isLoading = false; }
     }
+
+    // Lazy flowchart loading — called after review result is shown
+    bool isLoadingFlowchart = false;
+
+    async Task LoadFlowchartAsync(string codeForChart)
+    {
+        try
+        {
+            isLoadingFlowchart = true;
+            await InvokeAsync(StateHasChanged);
+
+            var http = HttpClientFactory.CreateClient("ReviewApi");
+            var resp = await http.PostAsJsonAsync("api/review/flowchart",
+                new { Code = codeForChart.Length > 40_000 ? codeForChart[..40_000] : codeForChart });
+            if (resp.IsSuccessStatusCode && responseDto != null)
+            {
+                var result = await resp.Content.ReadFromJsonAsync<FlowchartResult>();
+                if (result != null)
+                    responseDto.MermaidChart = result.MermaidChart;
+            }
+        }
+        catch { }
+        finally
+        {
+            isLoadingFlowchart = false;
+            try { await InvokeAsync(StateHasChanged); } catch { }
+        }
+    }
+
+    record FlowchartResult(string MermaidChart);
 
     // File upload handlers
     async Task HandleFileSelected(InputFileChangeEventArgs e)
@@ -2558,6 +2705,73 @@
     }
 
     record ShareResult(string Id, DateTime CreatedAt);
+
+    // Per-bug fix suggestions
+    Dictionary<int, string> bugFixes = new();
+    HashSet<int> loadingBugFixes = new();
+
+    async Task GetBugFix(int idx, BugDto bug)
+    {
+        if (loadingBugFixes.Contains(idx)) return;
+        loadingBugFixes.Add(idx);
+        bugFixes.Remove(idx);
+        StateHasChanged();
+
+        try
+        {
+            // Extract a small context window around the bug line from the reviewed code
+            var codeContext = "";
+            if (!string.IsNullOrEmpty(reviewedCode) && bug.Line > 0)
+            {
+                var lines = reviewedCode.Split('\n');
+                var from = Math.Max(0, bug.Line - 6);
+                var to   = Math.Min(lines.Length - 1, bug.Line + 6);
+                codeContext = string.Join('\n', lines[from..(to + 1)]);
+            }
+            else if (!string.IsNullOrEmpty(reviewedCode))
+            {
+                codeContext = reviewedCode.Length > 2000 ? reviewedCode[..2000] : reviewedCode;
+            }
+
+            var prompt = string.IsNullOrEmpty(codeContext)
+                ? $"Lỗi: {bug.Description}\n\nHãy giải thích ngắn gọn cách sửa lỗi này bằng tiếng Việt và cung cấp đoạn code mẫu đã sửa."
+                : $"Lỗi phát hiện: {bug.Description}\n\nĐoạn code liên quan (quanh line {bug.Line}):\n```\n{codeContext}\n```\n\nHãy chỉ ra cách sửa lỗi này bằng tiếng Việt. Chỉ hiển thị đoạn code đã sửa (ngắn gọn), không giải thích dài dòng.";
+
+            var http = HttpClientFactory.CreateClient("ReviewApi");
+            var req = new HttpRequestMessage(HttpMethod.Post, "api/review/chat/stream");
+            req.Content = System.Net.Http.Json.JsonContent.Create(new ChatRequestDto
+            {
+                OriginalCode = codeContext,
+                ChatHistory  = "",
+                UserMessage  = prompt
+            });
+
+            var fixBuilder = new System.Text.StringBuilder();
+            using var response = await http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead);
+            if (response.IsSuccessStatusCode)
+            {
+                using var stream = await response.Content.ReadAsStreamAsync();
+                using var reader = new System.IO.StreamReader(stream);
+                while (!reader.EndOfStream)
+                {
+                    var line = await reader.ReadLineAsync();
+                    if (line?.StartsWith("data: ") != true) continue;
+                    var data = line[6..];
+                    if (data == "[DONE]") break;
+                    try
+                    {
+                        var chunk = System.Text.Json.JsonSerializer.Deserialize<string>(data);
+                        if (chunk != null) { fixBuilder.Append(chunk); bugFixes[idx] = fixBuilder.ToString(); await InvokeAsync(StateHasChanged); }
+                    }
+                    catch { }
+                }
+            }
+
+            if (fixBuilder.Length == 0) bugFixes[idx] = "Không thể tạo gợi ý sửa lỗi lúc này.";
+        }
+        catch { bugFixes[idx] = "Không thể tạo gợi ý sửa lỗi lúc này."; }
+        finally { loadingBugFixes.Remove(idx); StateHasChanged(); }
+    }
 
     // History
     async Task OpenHistory()
@@ -2645,11 +2859,33 @@
             var historyStr = string.Join("\n",
                 chatHistory.SkipLast(1).Select(m => (m.IsUser ? "User: " : "AI: ") + m.Text));
 
+            // Build review context so AI knows what was just analyzed
+            var reviewCtx = "";
+            if (responseDto != null)
+            {
+                var sb = new System.Text.StringBuilder();
+                sb.AppendLine($"Điểm số: Hiệu suất {responseDto.PerformanceScore}/100 | Bảo mật {responseDto.SecurityScore}/100 | Bảo trì {responseDto.MaintainabilityScore}/100");
+                if (!string.IsNullOrEmpty(responseDto.Summary))
+                    sb.AppendLine($"Tổng quan: {responseDto.Summary}");
+                if (responseDto.DetectedBugs?.Count > 0)
+                {
+                    sb.AppendLine($"Phát hiện {responseDto.DetectedBugs.Count} lỗi:");
+                    foreach (var b in responseDto.DetectedBugs)
+                        sb.AppendLine($"  - Line {b.Line}: {b.Description}");
+                }
+                else
+                {
+                    sb.AppendLine("Không phát hiện lỗi nào.");
+                }
+                reviewCtx = sb.ToString();
+            }
+
             var requestDto = new ChatRequestDto
             {
-                OriginalCode = codeContent ?? "",
+                OriginalCode = reviewedCode.Length > 0 ? (reviewedCode.Length > 8000 ? reviewedCode[..8000] + "\n[... truncated ...]" : reviewedCode) : (codeContent ?? ""),
                 ChatHistory = historyStr,
-                UserMessage = userText
+                UserMessage = userText,
+                ReviewContext = reviewCtx
             };
 
             bool streamSucceeded = false;
@@ -2722,6 +2958,7 @@
             isStreaming = false;
             await InvokeAsync(StateHasChanged);
             try { await JS.InvokeVoidAsync("scrollToBottom", chatContainerRef); } catch { }
+            try { await JS.InvokeVoidAsync("focusElement", chatInputRef); } catch { }
         }
     }
 }

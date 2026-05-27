@@ -74,6 +74,15 @@ namespace AIReviewerAPI.Controllers
             }
         }
 
+        [HttpPost("flowchart")]
+        public async Task<IActionResult> ReviewFlowchart([FromBody] FlowchartRequestDto request)
+        {
+            if (string.IsNullOrWhiteSpace(request.Code))
+                return BadRequest(new { message = "No code provided." });
+            var chart = await _aiService.GenerateFlowchart(request.Code);
+            return Ok(new { mermaidChart = chart });
+        }
+
         [HttpPost("files")]
         [Consumes("multipart/form-data")]
         public async Task<IActionResult> ReviewFiles(

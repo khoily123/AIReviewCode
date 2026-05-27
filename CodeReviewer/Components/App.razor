@@ -179,6 +179,10 @@
             if (element) element.scrollTop = element.scrollHeight;
         };
 
+        window.focusElement = function (element) {
+            if (element) element.focus();
+        };
+
         window._ttsAudio = null;
 
         window.speakText = function (text) {
