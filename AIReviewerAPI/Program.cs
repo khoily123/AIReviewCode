@@ -50,6 +50,8 @@ app.UseCors("AllowBlazor");
 
 app.UseAuthorization();
 
+app.MapGet("/", () => Results.Ok(new { status = "running", service = "AIReviewCode API" }));
+
 app.MapControllers();
 
 app.Run();
