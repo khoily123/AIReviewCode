@@ -402,3 +402,9 @@ FodyWeavers.xsd
 
 # Env variables
 .env
+
+# Secrets
+secrets.json
+*.secrets.json
+.env.local
+.env.production
