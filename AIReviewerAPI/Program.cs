@@ -11,10 +11,13 @@ builder.WebHost.ConfigureKestrel(o =>
 });
 builder.Services.AddMemoryCache();
 
+var allowedOrigins = (builder.Configuration["AllowedOrigins"] ?? "https://localhost:7249")
+    .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowBlazor", policy =>
-        policy.WithOrigins("https://localhost:7249") // Chỉ cho phép Blazor app
+        policy.WithOrigins(allowedOrigins)
               .AllowAnyMethod()
               .AllowAnyHeader());
 });
