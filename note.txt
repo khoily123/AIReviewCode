@@ -1,0 +1,9 @@
+ReviewCodeByAI
+
+docker-compose up -d --build
+
+
+Mở CMD chứa cloudflared.exe -> Chạy lệnh sau:
+cloudflared.exe tunnel --url http://localhost:7091
+
+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
